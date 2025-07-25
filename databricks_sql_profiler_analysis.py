@@ -87,12 +87,12 @@ EXPLAIN_ENABLED = 'Y'
 # 🐛 デバッグモード設定（DEBUG_ENABLE: 'Y' = 中間ファイル保持, 'N' = 最終ファイルのみ保持）
 DEBUG_ENABLE = 'N'
 
-# 🔄 自動エラー修正の最大試行回数設定（MAX_RETRIES: デフォルト2回）
+# 🔄 自動エラー修正の最大試行回数設定（MAX_RETRIES: デフォルト3回）
 # LLMが生成した最適化クエリのEXPLAIN実行でエラーが発生した場合の再試行回数
 # - 1回目: 初回生成クエリでEXPLAIN実行
-# - 2回目以降: エラー情報をLLMに再入力して修正クエリを生成・再実行
+# - 2-3回目: エラー情報をLLMに再入力して修正クエリを生成・再実行
 # - 最大試行回数に達した場合: 元の動作可能クエリを使用してファイル生成
-MAX_RETRIES = 2
+MAX_RETRIES = 3
 
 # 🗂️ カタログとデータベース設定（EXPLAIN文実行時に使用）
 CATALOG = 'tpcds'
@@ -8453,10 +8453,11 @@ def generate_optimized_query_with_error_feedback(original_query: str, analysis_r
         return f"⚠️ エラー修正SQL生成中にエラーが発生しました: {str(e)}"
 
 
-def execute_explain_with_retry_logic(original_query: str, analysis_result: str, metrics: Dict[str, Any], max_retries: int = 2) -> Dict[str, Any]:
+def execute_explain_with_retry_logic(original_query: str, analysis_result: str, metrics: Dict[str, Any], max_retries: int = 3) -> Dict[str, Any]:
     """
-    EXPLAIN実行とエラー修正の再試行ロジック
-    最大2回まで自動修正を試行し、失敗時は元クエリを使用
+    EXPLAIN実行とエラー修正の再試行ロジック（最適化クエリの検証用）
+    最大3回まで自動修正を試行し、失敗時は元クエリを使用
+    注意: これはオリジナルクエリ用ではなく、最適化クエリの検証用です
     """
     from datetime import datetime
     
@@ -8894,8 +8895,41 @@ elif original_query_for_explain and original_query_for_explain.strip():
             else:
                 analysis_result_str = str(current_analysis_result)
             
-            # 🚀 新しい統合処理: 設定可能な最大試行回数での自動エラー修正
-            max_retries_setting = globals().get('MAX_RETRIES', 2)
+            # 🚀 ステップ1: オリジナルクエリのEXPLAIN実行（最適化前）
+            print("\n📋 ステップ1: オリジナルクエリのEXPLAIN実行")
+            print("-" * 50)
+            print("💡 最適化前の実行プランを分析してPhoton対応状況を確認")
+            
+            original_explain_result = execute_explain_and_save_to_file(original_query_for_explain)
+            
+            if 'explain_file' in original_explain_result:
+                print(f"✅ オリジナルクエリのEXPLAIN実行完了")
+                print(f"   📄 ファイル: {original_explain_result['explain_file']}")
+                print(f"   📊 プラン行数: {original_explain_result.get('plan_lines', 0):,}")
+                
+                # Photon Explanationの詳細確認
+                explain_file = original_explain_result['explain_file']
+                try:
+                    with open(explain_file, 'r', encoding='utf-8') as f:
+                        explain_content = f.read()
+                    
+                    if "== Photon Explanation ==" in explain_content:
+                        print("   🚀 Photon Explanation情報を確認済み")
+                    else:
+                        print("   ⚠️ Photon Explanation情報が見つかりません")
+                        
+                except Exception as e:
+                    print(f"   ⚠️ EXPLAIN結果の確認に失敗: {str(e)}")
+                    
+            elif 'error_file' in original_explain_result:
+                print(f"❌ オリジナルクエリのEXPLAIN実行でエラー発生")
+                print(f"   📄 エラーファイル: {original_explain_result['error_file']}")
+                print(f"   💡 最適化処理は継続しますが、Photon分析情報が不完全になる可能性があります")
+            
+            # 🚀 ステップ2: 新しい統合処理（オリジナルEXPLAIN結果を活用）
+            print("\n📋 ステップ2: LLM最適化 & 検証EXPLAIN実行")
+            print("-" * 50)
+            max_retries_setting = globals().get('MAX_RETRIES', 3)
             retry_result = execute_explain_with_retry_logic(
                original_query_for_explain, 
                analysis_result_str, 
@@ -8904,20 +8938,29 @@ elif original_query_for_explain and original_query_for_explain.strip():
             )
             
             # 結果の表示
-            print(f"\n📊 最終結果: {retry_result['final_status']}")
-            print(f"🔄 総試行回数: {retry_result['total_attempts']}")
+            print(f"\n📊 統合処理の最終結果")
+            print("=" * 50)
+            print(f"📋 ステップ1（オリジナルEXPLAIN）: {'✅ 成功' if 'explain_file' in original_explain_result else '❌ エラー'}")
+            print(f"📋 ステップ2（最適化+検証）: {retry_result['final_status']}")
+            print(f"🔄 最適化クエリの検証試行回数: {retry_result['total_attempts']}")
             
             if retry_result['final_status'] == 'success':
-                print("✅ 最適化クエリのEXPLAIN実行に成功しました！")
+                print("✅ 統合処理が成功しました！")
                 
-                # 成功時のファイル情報表示
+                # 全EXPLAIN結果の表示
+                print("\n📁 生成されたEXPLAINファイル:")
+                # オリジナルクエリのEXPLAIN結果
+                if 'explain_file' in original_explain_result:
+                    print(f"   📄 オリジナルクエリEXPLAIN: {original_explain_result['explain_file']}")
+                    print(f"   📊 オリジナル実行プラン行数: {original_explain_result.get('plan_lines', 0):,}")
+                
+                # 最適化クエリのEXPLAIN結果
                 explain_result = retry_result.get('explain_result', {})
                 if explain_result:
-                    print("\n📁 生成されたファイル:")
                     if 'explain_file' in explain_result:
-                        print(f"   📄 EXPLAIN結果: {explain_result['explain_file']}")
+                        print(f"   📄 最適化クエリEXPLAIN: {explain_result['explain_file']}")
                     if 'plan_lines' in explain_result:
-                        print(f"   📊 実行プラン行数: {explain_result['plan_lines']:,}")
+                        print(f"   📊 最適化実行プラン行数: {explain_result['plan_lines']:,}")
                 
                 # 最適化されたクエリの保存
                 optimized_result = retry_result.get('optimized_result', '')
@@ -8931,7 +8974,7 @@ elif original_query_for_explain and original_query_for_explain.strip():
                     analysis_result_str
                 )
                 
-                print("\n📁 最適化ファイル:")
+                print("\n📁 最適化レポート・SQLファイル:")
                 for file_type, filename in saved_files.items():
                     print(f"   📄 {file_type}: {filename}")
                     
