@@ -8362,6 +8362,281 @@ def extract_select_from_ctas(query: str) -> str:
     print("📋 通常のクエリ: そのままEXPLAIN文に使用")
     return query
 
+def generate_optimized_query_with_error_feedback(original_query: str, analysis_result: str, metrics: Dict[str, Any], error_info: str = "") -> str:
+    """
+    エラー情報を含めてLLMによるSQL最適化を実行
+    エラー修正に特化したプロンプトを使用
+    """
+    
+    error_feedback_prompt = f"""
+あなたはDatabricksのSQLパフォーマンス最適化とエラー修正の専門家です。
+
+以下の最適化クエリでEXPLAIN実行時にエラーが発生しました。エラー情報を基に修正してください。
+
+【🚨 発生したエラー情報】
+{error_info}
+
+【元の分析対象クエリ】
+```sql
+{original_query}
+```
+
+【詳細なボトルネック分析結果】
+{analysis_result}
+
+【🔧 エラー修正の重要な指針】
+1. **構文エラーの修正**: SQL構文の文法エラーを最優先で修正
+2. **テーブル・カラム名の確認**: 存在しないテーブルやカラムの修正
+3. **型変換エラーの修正**: 不適切な型変換やキャストの修正
+4. **ヒント句の修正**: 不正なヒント構文の修正
+5. **権限エラーの回避**: アクセス権限のないテーブルの代替策
+6. **最適化レベルの調整**: 複雑すぎる最適化の簡素化
+
+【🚨 BROADCASTヒント配置の厳格なルール - エラー修正版】
+- **必ずメインクエリの最初のSELECT文の直後のみ**に配置
+- **サブクエリ内部には絶対に配置しない**
+- **FROM句、JOIN句、WHERE句内には絶対に配置しない**
+- **テーブル名またはエイリアス名を必ず指定**: `/*+ BROADCAST(table_name) */`
+
+【🚨 REPARTITIONヒント配置の厳格なルール - エラー修正版】
+- **サブクエリ内部のSELECT文直後に配置**
+- **パーティション数とカラム名は必須**: `/*+ REPARTITION(200, column_name) */`
+- **スピル検出時のみ適用**
+
+【重要な制約 - エラー修正版】
+- 構文エラーを絶対に発生させない完全なSQLクエリを生成
+- すべてのカラム名、テーブル名を完全に記述
+- プレースホルダー（...、[省略]）は一切使用禁止
+- 元のクエリのDISTINCT句は必ず保持
+- 実際に実行できる完全なSQLクエリのみを出力
+
+【出力形式】
+## 🔧 エラー修正済み最適化SQL
+
+**修正した内容**:
+- [具体的なエラー修正箇所]
+- [適用した最適化手法]
+
+```sql
+[完全なSQL - エラー修正済み]
+```
+
+## 修正詳細
+[エラーの原因と修正方法の詳細説明]
+"""
+
+    # 設定されたLLMプロバイダーを使用
+    provider = LLM_CONFIG["provider"]
+    
+    try:
+        if provider == "databricks":
+            optimized_result = _call_databricks_llm(error_feedback_prompt)
+        elif provider == "openai":
+            optimized_result = _call_openai_llm(error_feedback_prompt)
+        elif provider == "azure_openai":
+            optimized_result = _call_azure_openai_llm(error_feedback_prompt)
+        elif provider == "anthropic":
+            optimized_result = _call_anthropic_llm(error_feedback_prompt)
+        else:
+            return "⚠️ 設定されたLLMプロバイダーが認識できません"
+        
+        return optimized_result
+        
+    except Exception as e:
+        return f"⚠️ エラー修正SQL生成中にエラーが発生しました: {str(e)}"
+
+
+def execute_explain_with_retry_logic(original_query: str, analysis_result: str, metrics: Dict[str, Any], max_retries: int = 2) -> Dict[str, Any]:
+    """
+    EXPLAIN実行とエラー修正の再試行ロジック
+    最大2回まで自動修正を試行し、失敗時は元クエリを使用
+    """
+    from datetime import datetime
+    
+    print(f"\n🔄 EXPLAIN実行と自動エラー修正（最大{max_retries}回試行）")
+    print("=" * 60)
+    
+    # 初回の最適化クエリ生成
+    print("🤖 ステップ1: 初回最適化クエリ生成")
+    optimized_query = generate_optimized_query_with_llm(original_query, analysis_result, metrics)
+    
+    # thinking_enabled対応: リスト形式の場合はメインコンテンツを抽出
+    if isinstance(optimized_query, list):
+        optimized_query_str = extract_main_content_from_thinking_response(optimized_query)
+    else:
+        optimized_query_str = str(optimized_query)
+    
+    # SQLクエリ部分のみを抽出
+    extracted_sql = extract_sql_from_llm_response(optimized_query_str)
+    current_query = extracted_sql if extracted_sql else original_query
+    
+    retry_count = 0
+    all_attempts = []  # 全試行の記録
+    
+    while retry_count <= max_retries:
+        attempt_num = retry_count + 1
+        print(f"\n🔍 試行 {attempt_num}/{max_retries + 1}: EXPLAIN実行")
+        
+        # EXPLAIN実行
+        explain_result = execute_explain_and_save_to_file(current_query)
+        
+        # 成功時の処理
+        if 'explain_file' in explain_result and 'error_file' not in explain_result:
+            print(f"✅ 試行 {attempt_num} で成功しました！")
+            
+            # 成功記録
+            attempt_record = {
+                'attempt': attempt_num,
+                'status': 'success',
+                'query': current_query,
+                'explain_file': explain_result.get('explain_file'),
+                'plan_lines': explain_result.get('plan_lines', 0)
+            }
+            all_attempts.append(attempt_record)
+            
+            # 最終結果
+            return {
+                'final_status': 'success',
+                'final_query': current_query,
+                'total_attempts': attempt_num,
+                'all_attempts': all_attempts,
+                'explain_result': explain_result,
+                'optimized_result': optimized_query  # 元の完全なレスポンス
+            }
+        
+        # エラー時の処理
+        elif 'error_file' in explain_result:
+            error_message = explain_result.get('error_message', 'Unknown error')
+            print(f"❌ 試行 {attempt_num} でエラー発生: {error_message}")
+            
+            # エラー記録
+            attempt_record = {
+                'attempt': attempt_num,
+                'status': 'error',
+                'query': current_query,
+                'error_message': error_message,
+                'error_file': explain_result.get('error_file')
+            }
+            all_attempts.append(attempt_record)
+            
+            # 最大試行回数に達した場合
+            if retry_count >= max_retries:
+                print(f"🚨 最大試行回数（{max_retries}回）に達しました")
+                print("📋 元の動作可能クエリを使用します")
+                
+                # フォールバック: 元クエリでのファイル生成
+                fallback_result = save_optimized_sql_files(
+                    original_query, 
+                    f"# 🚨 最適化クエリのEXPLAIN実行が{max_retries}回とも失敗したため、元クエリを使用\n\n## 最後のエラー情報\n{error_message}\n\n## 元のクエリ\n```sql\n{original_query}\n```",
+                    metrics,
+                    analysis_result
+                )
+                
+                # 失敗時のログ記録
+                timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                log_filename = f"output_optimization_failure_log_{timestamp}.txt"
+                
+                try:
+                    with open(log_filename, 'w', encoding='utf-8') as f:
+                        f.write(f"# 最適化クエリ生成失敗ログ\n")
+                        f.write(f"実行日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                        f.write(f"最大試行回数: {max_retries}回\n")
+                        f.write(f"最終結果: 元クエリを使用\n\n")
+                        
+                        f.write("=" * 80 + "\n")
+                        f.write("全試行の詳細記録:\n")
+                        f.write("=" * 80 + "\n\n")
+                        
+                        for attempt in all_attempts:
+                            f.write(f"【試行 {attempt['attempt']}】\n")
+                            f.write(f"ステータス: {attempt['status']}\n")
+                            if attempt['status'] == 'error':
+                                f.write(f"エラー: {attempt['error_message']}\n")
+                                f.write(f"エラーファイル: {attempt.get('error_file', 'N/A')}\n")
+                            f.write(f"使用クエリ長: {len(attempt['query'])} 文字\n\n")
+                        
+                        f.write("=" * 80 + "\n")
+                        f.write("元のクエリ（フォールバック使用）:\n")
+                        f.write("=" * 80 + "\n\n")
+                        f.write(original_query)
+                    
+                    print(f"📄 失敗ログを保存: {log_filename}")
+                    
+                except Exception as log_error:
+                    print(f"❌ 失敗ログの保存にも失敗: {str(log_error)}")
+                
+                return {
+                    'final_status': 'fallback_to_original',
+                    'final_query': original_query,
+                    'total_attempts': attempt_num,
+                    'all_attempts': all_attempts,
+                    'fallback_files': fallback_result,
+                    'failure_log': log_filename
+                }
+            
+            # 再試行する場合のエラー修正
+            retry_count += 1
+            print(f"🔧 試行 {retry_count + 1} に向けてエラー修正中...")
+            
+            # エラー情報を含めて再生成
+            corrected_query = generate_optimized_query_with_error_feedback(
+                original_query, 
+                analysis_result, 
+                metrics, 
+                error_message
+            )
+            
+            # thinking_enabled対応
+            if isinstance(corrected_query, list):
+                corrected_query_str = extract_main_content_from_thinking_response(corrected_query)
+            else:
+                corrected_query_str = str(corrected_query)
+            
+            # SQLクエリ部分のみを抽出
+            extracted_sql = extract_sql_from_llm_response(corrected_query_str)
+            current_query = extracted_sql if extracted_sql else current_query
+            
+            print(f"✅ エラー修正クエリを生成しました（{len(current_query)} 文字）")
+    
+    # ここには到達しないはずだが、安全のため
+    return {
+        'final_status': 'unexpected_error',
+        'final_query': original_query,
+        'total_attempts': retry_count + 1,
+        'all_attempts': all_attempts
+    }
+
+
+def extract_sql_from_llm_response(llm_response: str) -> str:
+    """
+    LLMレスポンスからSQLクエリ部分のみを抽出
+    """
+    import re
+    
+    # SQLコードブロックを検索（```sql ... ```）
+    sql_pattern = r'```sql\s*(.*?)\s*```'
+    matches = re.findall(sql_pattern, llm_response, re.DOTALL | re.IGNORECASE)
+    
+    if matches:
+        # 最長のSQLブロックを選択
+        sql_query = max(matches, key=len).strip()
+        return sql_query
+    
+    # SQLコードブロックが見つからない場合、別のパターンを試行
+    # ```のみのコードブロック
+    code_pattern = r'```\s*(.*?)\s*```'
+    matches = re.findall(code_pattern, llm_response, re.DOTALL)
+    
+    for match in matches:
+        match = match.strip()
+        # SQLキーワードで始まるかチェック
+        if re.match(r'^(SELECT|WITH|CREATE|INSERT|UPDATE|DELETE|EXPLAIN)', match, re.IGNORECASE):
+            return match
+    
+    # パターンマッチしない場合は元のレスポンスをそのまま返す
+    return llm_response.strip()
+
+
 def execute_explain_and_save_to_file(original_query: str) -> Dict[str, str]:
     """
     オリジナルクエリのEXPLAIN文を実行し、結果をファイルに保存
@@ -8543,7 +8818,7 @@ if explain_enabled.upper() != 'Y':
     print("⚠️ EXPLAIN実行が無効化されています")
     print("   EXPLAIN文を実行する場合は、最初のセルでEXPLAIN_ENABLED = 'Y'に設定してください")
 elif original_query_for_explain and original_query_for_explain.strip():
-    print("\n🚀 EXPLAIN文を実行します...")
+    print("\n🚀 統合SQL最適化 & EXPLAIN実行（自動エラー修正付き）")
     
     # Spark環境の確認
     try:
@@ -8555,22 +8830,109 @@ elif original_query_for_explain and original_query_for_explain.strip():
         spark = None
     
     if spark:
-        # EXPLAIN文の実行
-        explain_results = execute_explain_and_save_to_file(original_query_for_explain)
+        # 統合処理: 分析結果が必要なので確認
+        try:
+            # analysis_resultが定義されているかチェック
+            if 'analysis_result' in globals():
+                current_analysis_result = analysis_result
+            else:
+                print("⚠️ 分析結果が見つかりません。簡易分析を実行します...")
+                current_analysis_result = "分析結果が利用できないため、基本的な最適化のみ実行"
+            
+            # extracted_metricsが定義されているかチェック  
+            if 'extracted_metrics' in globals():
+                current_metrics = extracted_metrics
+            else:
+                print("⚠️ メトリクスが見つかりません。空のメトリクスで実行します...")
+                current_metrics = {}
+            
+            # thinking_enabled対応
+            if isinstance(current_analysis_result, list):
+                analysis_result_str = extract_main_content_from_thinking_response(current_analysis_result)
+            else:
+                analysis_result_str = str(current_analysis_result)
+            
+            # 🚀 新しい統合処理: 最大2回再試行の自動エラー修正
+            retry_result = execute_explain_with_retry_logic(
+                original_query_for_explain, 
+                analysis_result_str, 
+                current_metrics, 
+                max_retries=2
+            )
+            
+            # 結果の表示
+            print(f"\n📊 最終結果: {retry_result['final_status']}")
+            print(f"🔄 総試行回数: {retry_result['total_attempts']}")
+            
+            if retry_result['final_status'] == 'success':
+                print("✅ 最適化クエリのEXPLAIN実行に成功しました！")
+                
+                # 成功時のファイル情報表示
+                explain_result = retry_result.get('explain_result', {})
+                if explain_result:
+                    print("\n📁 生成されたファイル:")
+                    if 'explain_file' in explain_result:
+                        print(f"   📄 EXPLAIN結果: {explain_result['explain_file']}")
+                    if 'plan_lines' in explain_result:
+                        print(f"   📊 実行プラン行数: {explain_result['plan_lines']:,}")
+                
+                # 最適化されたクエリの保存
+                optimized_result = retry_result.get('optimized_result', '')
+                final_query = retry_result.get('final_query', original_query_for_explain)
+                
+                # ファイル保存
+                saved_files = save_optimized_sql_files(
+                    original_query_for_explain,
+                    optimized_result,
+                    current_metrics,
+                    analysis_result_str
+                )
+                
+                print("\n📁 最適化ファイル:")
+                for file_type, filename in saved_files.items():
+                    print(f"   📄 {file_type}: {filename}")
+                    
+            elif retry_result['final_status'] == 'fallback_to_original':
+                print("⚠️ 最適化クエリでエラーが継続したため、元クエリを使用しました")
+                
+                # フォールバック時のファイル情報表示
+                fallback_files = retry_result.get('fallback_files', {})
+                failure_log = retry_result.get('failure_log', '')
+                
+                print("\n📁 生成されたファイル:")
+                for file_type, filename in fallback_files.items():
+                    print(f"   📄 {file_type}: {filename}")
+                if failure_log:
+                    print(f"   📄 失敗ログ: {failure_log}")
+                    
+            # 全試行の詳細表示
+            print("\n📋 試行詳細:")
+            for attempt in retry_result.get('all_attempts', []):
+                status_icon = "✅" if attempt['status'] == 'success' else "❌"
+                print(f"   {status_icon} 試行 {attempt['attempt']}: {attempt['status']}")
+                if attempt['status'] == 'error':
+                    print(f"      エラー: {attempt['error_message'][:100]}...")
+                    
+        except Exception as e:
+            print(f"❌ 統合処理中にエラーが発生: {str(e)}")
+            print("   従来のEXPLAIN実行に切り替えます...")
+            
+            # フォールバック: 従来のEXPLAIN実行
+            explain_results = execute_explain_and_save_to_file(original_query_for_explain)
+            
+            if explain_results:
+                print("\n📁 生成されたファイル:")
+                for file_type, filename in explain_results.items():
+                    if file_type == 'explain_file':
+                        print(f"   📄 EXPLAIN結果: {filename}")
+                    elif file_type == 'error_file':
+                        print(f"   📄 エラーログ: {filename}")
+                    elif file_type == 'plan_lines':
+                        print(f"   📊 実行プラン行数: {filename}")
+                    elif file_type == 'error_message':
+                        print(f"   ❌ エラーメッセージ: {filename}")
         
-        if explain_results:
-            print("\n📁 生成されたファイル:")
-            for file_type, filename in explain_results.items():
-                if file_type == 'explain_file':
-                    print(f"   📄 EXPLAIN結果: {filename}")
-                elif file_type == 'error_file':
-                    print(f"   📄 エラーログ: {filename}")
-                elif file_type == 'plan_lines':
-                    print(f"   📊 実行プラン行数: {filename}")
-                elif file_type == 'error_message':
-                    print(f"   ❌ エラーメッセージ: {filename}")
-        
-        print("\n✅ EXPLAIN文実行処理が完了しました")
+        print("\n✅ 統合SQL最適化処理が完了しました")
         
     else:
         print("❌ Spark環境が利用できないため、EXPLAIN文は実行できません")
@@ -8585,34 +8947,49 @@ print()
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 🤖 LLMによるSQL最適化
+# MAGIC ## 🤖 従来のSQL最適化（参考）
 # MAGIC
-# MAGIC このセルでは以下の処理を実行します：
-# MAGIC - LLMを使用した抽出クエリの最適化
-# MAGIC - EXPLAIN結果をINPUTとして活用
-# MAGIC - 最適化結果の詳細表示（1000行まで）
-# MAGIC - エラーハンドリングと代替処理
+# MAGIC このセルは新しい統合処理とは独立した従来の最適化処理です。
+# MAGIC 統合処理が失敗した場合やデバッグ目的で使用できます。
 
 # COMMAND ----------
 
-# 🤖 ステップ2: LLMによるSQL最適化
-print("\n🤖 ステップ2: LLMによるSQL最適化")
+# 🤖 従来のステップ2: LLMによるSQL最適化（参考）
+print("\n🤖 従来のステップ2: LLMによるSQL最適化（参考）")
 print("-" * 40)
 
-if original_query.strip():
-    print(f"🔄 {provider.upper()} を使用してクエリを最適化中...")
+# 既存変数の確認
+try:
+    test_original_query = original_query
+    test_analysis_result = analysis_result if 'analysis_result' in globals() else ""
+    test_extracted_metrics = extracted_metrics if 'extracted_metrics' in globals() else {}
+    
+    print("📋 従来処理用の変数確認:")
+    print(f"   original_query: {len(str(test_original_query))} 文字")
+    print(f"   analysis_result: {len(str(test_analysis_result))} 文字")
+    print(f"   extracted_metrics: {len(test_extracted_metrics)} 項目")
+    
+except NameError as e:
+    print(f"⚠️ 必要な変数が見つかりません: {str(e)}")
+    print("   メイン処理セクションを先に実行してください")
+
+if 'original_query' in globals() and original_query.strip():
+    print(f"🔄 従来の{LLM_CONFIG['provider'].upper()}最適化を実行中...")
     
     # thinking_enabled: Trueの場合にanalysis_resultがリストになることがあるため対応
-    if isinstance(analysis_result, list):
-        # リストの場合は主要コンテンツのみを抽出してLLMに渡す
-        analysis_result_str = extract_main_content_from_thinking_response(analysis_result)
+    if 'analysis_result' in globals():
+        if isinstance(analysis_result, list):
+            # リストの場合は主要コンテンツのみを抽出してLLMに渡す
+            analysis_result_str = extract_main_content_from_thinking_response(analysis_result)
+        else:
+            analysis_result_str = str(analysis_result)
     else:
-        analysis_result_str = str(analysis_result)
+        analysis_result_str = "分析結果が利用できません"
     
-    optimized_result = generate_optimized_query_with_llm(
+    traditional_optimized_result = generate_optimized_query_with_llm(
         original_query, 
         analysis_result_str, 
-        extracted_metrics
+        extracted_metrics if 'extracted_metrics' in globals() else {}
     )
     
     # thinking_enabled: Trueの場合にoptimized_resultがリストになることがあるため対応
