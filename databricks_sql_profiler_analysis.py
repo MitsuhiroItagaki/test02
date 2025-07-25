@@ -8747,6 +8747,81 @@ def execute_explain_and_save_to_file(original_query: str) -> Dict[str, str]:
         # 結果を収集
         explain_result = result.collect()
         
+        # 🚨 重要: EXPLAIN結果の内容をチェックしてエラーメッセージが含まれているかを確認
+        explain_content = ""
+        for row in explain_result:
+            explain_content += str(row[0]) + "\n"
+        
+        # エラーパターンのチェック
+        retryable_error_patterns = [
+            "Error occurred during query planning",
+            "error occurred during query planning", 
+            "Query planning failed",
+            "query planning failed",
+            "Plan optimization failed",
+            "plan optimization failed",
+            "Failed to plan query",
+            "failed to plan query",
+            "Analysis exception",
+            "analysis exception",
+            "AMBIGUOUS_REFERENCE",
+            "ambiguous_reference",
+            "[AMBIGUOUS_REFERENCE]",
+            "Reference",
+            "is ambiguous",
+            "Ambiguous",
+            "ParseException",
+            "SemanticException",
+            "AnalysisException",
+            "Syntax error",
+            "syntax error",
+            "PARSE_SYNTAX_ERROR",
+            "INVALID_IDENTIFIER",
+            "TABLE_OR_VIEW_NOT_FOUND",
+            "COLUMN_NOT_FOUND"
+        ]
+        
+        # EXPLAIN結果にエラーメッセージが含まれているかチェック
+        detected_error = None
+        for pattern in retryable_error_patterns:
+            if pattern in explain_content.lower():
+                detected_error = pattern
+                break
+        
+        if detected_error:
+            # エラーが検出された場合はエラーとして処理
+            print(f"❌ EXPLAIN結果でエラーを検出: {detected_error}")
+            
+            # エラーファイルの保存
+            error_filename = f"output_explain_error_{timestamp}.txt"
+            with open(error_filename, 'w', encoding='utf-8') as f:
+                f.write(f"# EXPLAIN実行エラー\n")
+                f.write(f"実行日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"検出エラーパターン: {detected_error}\n")
+                f.write(f"オリジナルクエリ文字数: {len(original_query):,}\n")
+                f.write("\n" + "=" * 80 + "\n")
+                f.write("EXPLAIN エラー結果:\n")
+                f.write("=" * 80 + "\n\n")
+                f.write(explain_content)
+            
+            # 結果のプレビュー表示（エラー用）
+            print("\n📋 EXPLAIN結果のプレビュー:")
+            print("-" * 50)
+            preview_lines = min(10, len(explain_result))
+            for i, row in enumerate(explain_result[:preview_lines]):
+                print(f"{i+1:2d}: {str(row[0])[:100]}...")
+            
+            if len(explain_result) > preview_lines:
+                print(f"... (残り {len(explain_result) - preview_lines} 行は {error_filename} を参照)")
+            print("-" * 50)
+            
+            return {
+                'error_file': error_filename,
+                'error_message': explain_content.strip(),
+                'detected_pattern': detected_error
+            }
+        
+        # エラーが検出されなかった場合は成功として処理
         # 結果をファイルに保存
         with open(explain_filename, 'w', encoding='utf-8') as f:
             f.write(f"# EXPLAIN実行結果\n")
@@ -8755,9 +8830,7 @@ def execute_explain_and_save_to_file(original_query: str) -> Dict[str, str]:
             f.write("\n" + "=" * 80 + "\n")
             f.write("EXPLAIN結果:\n")
             f.write("=" * 80 + "\n\n")
-            
-            for row in explain_result:
-                f.write(str(row[0]) + "\n")
+            f.write(explain_content)
         
         print(f"✅ EXPLAIN結果を保存: {explain_filename}")
         print(f"📊 実行プラン行数: {len(explain_result):,}")
