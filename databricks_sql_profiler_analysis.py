@@ -8292,13 +8292,13 @@ else:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 🔍 EXPLAIN文実行とファイル出力
+# MAGIC ## 🚀 統合SQL最適化処理（メイン処理）
 # MAGIC
-# MAGIC このセルでは以下の処理を実行します：
-# MAGIC - セル43で抽出したオリジナルクエリを取得
-# MAGIC - EXPLAIN文を生成してDatabricksで実行
-# MAGIC - 実行プランの詳細をファイルに出力
-# MAGIC - エラーハンドリングと結果の確認
+# MAGIC このセルでは以下の統合処理を実行します：
+# MAGIC - **ステップ1**: オリジナルクエリのEXPLAIN実行（Photon対応状況分析）
+# MAGIC - **ステップ2**: LLMによるSQL最適化 + 最適化クエリの検証EXPLAIN（最大3回自動エラー修正）
+# MAGIC - **ステップ3**: 最適化結果の保存とファイル出力
+# MAGIC - **エラーハンドリング**: AMBIGUOUS_REFERENCE等の自動修正機能
 
 # COMMAND ----------
 
