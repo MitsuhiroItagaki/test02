@@ -6141,6 +6141,15 @@ FROM (
 - 実際に実行できる完全なSQLクエリのみを出力してください
 - 元のクエリと同じアウトプットになることを厳守してください
 
+【🚨 AMBIGUOUS_REFERENCE エラー防止の必須ルール】
+- **全てのカラム参照でテーブル名またはエイリアス名を明示的に指定**
+- **JOINの条件では必ずテーブル名/エイリアスを明示**: `ss_item_sk = i_item_sk` → `ss.ss_item_sk = i.i_item_sk`
+- **SELECT句でも全てのカラムにテーブル名/エイリアスを付与**: `i_brand_id` → `i.i_brand_id`
+- **GROUP BY、ORDER BY、WHERE句でも同様に明示**: `GROUP BY i_brand_id` → `GROUP BY i.i_brand_id`
+- **サブクエリとメインクエリで同名カラムがある場合は特に注意深くエイリアス使用**
+- **CTEでもテーブルエイリアスを一貫して使用**
+- **全てのテーブルに短いエイリアス名を付与**（例: store_sales → ss, item → i, date_dim → d）
+
 【🚨 BROADCASTヒント配置の厳格なルール - 構文エラー防止】
 **絶対に守るべき文法ルール（構文エラー防止のため必須）:**
 
@@ -6268,6 +6277,12 @@ FROM cte1 c
 - [推定される性能改善効果]
 
 **🚨 構文エラー防止の最終確認**:
+- ✅ **AMBIGUOUS_REFERENCE エラー防止**: 全てのカラム参照でテーブル名/エイリアス名が明示されている
+- ✅ **JOINの条件**: 両側のカラムにテーブル名/エイリアスが指定されている（例: ss.ss_item_sk = i.i_item_sk）
+- ✅ **SELECT句**: 全てのカラムにテーブル名/エイリアスが付与されている（例: i.i_brand_id）
+- ✅ **GROUP BY、ORDER BY、WHERE句**: 全てのカラム参照にテーブル名/エイリアスが指定されている
+- ✅ **CTEとサブクエリ**: 同名カラムがある場合も適切にエイリアス使用されている
+- ✅ **テーブルエイリアス**: 全てのテーブルに一貫したエイリアス名が付与されている
 - ✅ 全てのBROADCASTヒントがメインクエリの最初のSELECT文の直後に配置されている
 - ✅ サブクエリ、CTE、JOINサブクエリ内部にBROADCASTヒントが配置されていない
 - ✅ FROM句、JOIN句、WHERE句内にヒントが配置されていない
@@ -6292,7 +6307,9 @@ FROM cte1 c
 -- 🚨 複数ヒント+DISTINCT例: SELECT /*+ REPARTITION(200), BROADCAST(small_table) */ DISTINCT t1.column1, t2.column2, ...
 -- 無効な例: SELECT /*+ BROADCAST */ column1, column2, ... (テーブル名なし - 無効)
 -- 🚨 REPARTITIONヒントはサブクエリ内部に配置: SELECT ... FROM (SELECT /*+ REPARTITION(200, join_key) */ ... FROM table) ...
-[完全なSQL - すべてのカラム・CTE・テーブル名を省略なしで記述]
+-- 🚨 AMBIGUOUS_REFERENCE防止: 全てのカラムにテーブル名/エイリアス必須
+-- 例: ss.ss_item_sk = i.i_item_sk, SELECT i.i_brand_id, ss.ss_quantity, GROUP BY i.i_brand_id
+[完全なSQL - すべてのカラム・CTE・テーブル名を省略なしで記述、全カラム参照でテーブル名/エイリアス明示]
 ```
 
 ## 改善ポイント
@@ -8417,12 +8434,26 @@ def generate_optimized_query_with_error_feedback(original_query: str, analysis_r
 {analysis_result}
 
 【🔧 エラー修正の重要な指針】
-1. **構文エラーの修正**: SQL構文の文法エラーを最優先で修正
-2. **テーブル・カラム名の確認**: 存在しないテーブルやカラムの修正
-3. **型変換エラーの修正**: 不適切な型変換やキャストの修正
-4. **ヒント句の修正**: 不正なヒント構文の修正
-5. **権限エラーの回避**: アクセス権限のないテーブルの代替策
-6. **最適化レベルの調整**: 複雑すぎる最適化の簡素化
+1. **🚨 AMBIGUOUS_REFERENCE エラーの最優先修正**: 
+   - **全てのカラム参照でテーブル名またはエイリアス名を明示的に指定**
+   - 例: `ss_item_sk` → `store_sales.ss_item_sk` または `ss.ss_item_sk`
+   - **JOINの条件でも必ずテーブル名/エイリアスを明示**
+   - 例: `ss_item_sk = i_item_sk` → `ss.ss_item_sk = i.i_item_sk`
+   - **SELECT句でも全てのカラムにテーブル名/エイリアスを付与**
+   - **GROUP BY、ORDER BY、WHERE句でも同様に明示**
+   - **サブクエリとメインクエリで同名カラムがある場合は特に注意**
+
+2. **テーブルエイリアスの一貫使用**: 
+   - 全てのテーブルに短いエイリアス名を付与（例: store_sales → ss, item → i）
+   - クエリ全体で一貫してエイリアス名を使用
+   - サブクエリ内でも同じエイリアス名体系を維持
+
+3. **構文エラーの修正**: SQL構文の文法エラーを修正
+4. **テーブル・カラム名の確認**: 存在しないテーブルやカラムの修正
+5. **型変換エラーの修正**: 不適切な型変換やキャストの修正
+6. **ヒント句の修正**: 不正なヒント構文の修正
+7. **権限エラーの回避**: アクセス権限のないテーブルの代替策
+8. **最適化レベルの調整**: 複雑すぎる最適化の簡素化
 
 【🚨 BROADCASTヒント配置の厳格なルール - エラー修正版】
 - **必ずメインクエリの最初のSELECT文の直後のみ**に配置
@@ -8441,6 +8472,8 @@ def generate_optimized_query_with_error_feedback(original_query: str, analysis_r
 - プレースホルダー（...、[省略]）は一切使用禁止
 - 元のクエリのDISTINCT句は必ず保持
 - 実際に実行できる完全なSQLクエリのみを出力
+- **🚨 AMBIGUOUS_REFERENCEエラー完全防止**: 全てのカラム参照でテーブル名/エイリアス必須
+- **テーブルエイリアス一貫使用**: 全クエリ内で統一されたエイリアス名体系を維持
 
 【出力形式】
 ## 🔧 エラー修正済み最適化SQL
