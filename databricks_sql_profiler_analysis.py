@@ -8022,7 +8022,7 @@ def validate_final_sql_syntax(sql_query: str) -> bool:
     
     return True
 
-def save_optimized_sql_files(original_query: str, optimized_result: str, metrics: Dict[str, Any], analysis_result: str = "") -> Dict[str, str]:
+def save_optimized_sql_files(original_query: str, optimized_result: str, metrics: Dict[str, Any], analysis_result: str = "", llm_response: str = "") -> Dict[str, str]:
     """
     最適化されたSQLクエリを実行可能な形でファイルに保存
     
@@ -8036,15 +8036,9 @@ def save_optimized_sql_files(original_query: str, optimized_result: str, metrics
     import re
     from datetime import datetime
     
-    # thinking_enabled: Trueの場合にoptimized_resultがリストになることがあるため対応
-    optimized_result_for_file = optimized_result
-    optimized_result_main_content = optimized_result
-    
-    if isinstance(optimized_result, list):
-        # ファイル保存用は人間に読みやすい形式に変換
-        optimized_result_for_file = format_thinking_response(optimized_result)
-        # SQL抽出用は主要コンテンツのみを使用
-        optimized_result_main_content = extract_main_content_from_thinking_response(optimized_result)
+    # 🎯 重要: optimized_resultは成功したクエリ（final_query）またはLLMレスポンス
+    # retry logicで成功した場合は final_query（SQL文字列）が渡される
+    # 失敗した場合は元のLLMレスポンスが渡される
     
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     query_id = metrics.get('query_info', {}).get('query_id', 'unknown')
@@ -8055,44 +8049,62 @@ def save_optimized_sql_files(original_query: str, optimized_result: str, metrics
     # 最適化されたクエリの抽出と保存
     optimized_filename = f"output_optimized_query_{timestamp}.sql"
     
-    # 最適化結果からSQLコードを抽出（主要コンテンツから抽出） - 改善版
-    sql_pattern = r'```sql\s*(.*?)\s*```'
-    sql_matches = re.findall(sql_pattern, optimized_result_main_content, re.DOTALL | re.IGNORECASE)
-    
+    # 🚀 final_queryが直接渡された場合の処理（retry logic成功時）
     optimized_sql = ""
-    if sql_matches:
-        # 最も長いSQLブロックを使用（完全性を優先）
-        optimized_sql = max(sql_matches, key=len).strip()
+    
+    if llm_response:
+        # レポート用データとして元のLLMレスポンスが渡された場合
+        optimized_result_for_file = llm_response
+        optimized_result_main_content = llm_response
+        
+        if isinstance(llm_response, list):
+            optimized_result_for_file = format_thinking_response(llm_response)
+            optimized_result_main_content = extract_main_content_from_thinking_response(llm_response)
+        
+        # optimized_resultは成功したクエリなのでそのまま使用
+        optimized_sql = optimized_result.strip() if optimized_result else ""
     else:
-        # SQLブロックが見つからない場合は、SQL関連の行を抽出（改善版）
-        lines = optimized_result_main_content.split('\n')
-        sql_lines = []
-        in_sql_section = False
+        # 従来の処理（LLMレスポンスから抽出）
+        optimized_result_for_file = optimized_result
+        optimized_result_main_content = optimized_result
         
-        for line in lines:
-            line_stripped = line.strip()
-            
-            # SQLの開始を検出
-            if any(keyword in line.upper() for keyword in ['SELECT', 'FROM', 'WHERE', 'WITH', 'CREATE', 'INSERT', 'UPDATE', 'DELETE']):
-                in_sql_section = True
-            
-            if in_sql_section:
-                # SQLの終了を検出（マークダウンセクションやレポートセクション）
-                if (line_stripped.startswith('#') or 
-                    line_stripped.startswith('*') or 
-                    line_stripped.startswith('##') or
-                    line_stripped.startswith('**') or
-                    line_stripped.startswith('---') or
-                    line_stripped.startswith('===') or
-                    '改善ポイント' in line_stripped or
-                    '期待効果' in line_stripped or
-                    'BROADCAST適用根拠' in line_stripped):
-                    in_sql_section = False
-                else:
-                    # 空行や有効なSQL行を追加
-                    sql_lines.append(line)
+        if isinstance(optimized_result, list):
+            optimized_result_for_file = format_thinking_response(optimized_result)
+            optimized_result_main_content = extract_main_content_from_thinking_response(optimized_result)
         
-        optimized_sql = '\n'.join(sql_lines).strip()
+        # LLMレスポンスからSQLコードを抽出
+        sql_pattern = r'```sql\s*(.*?)\s*```'
+        sql_matches = re.findall(sql_pattern, optimized_result_main_content, re.DOTALL | re.IGNORECASE)
+        
+        if sql_matches:
+            optimized_sql = max(sql_matches, key=len).strip()
+        else:
+            # SQLブロックが見つからない場合の抽出処理
+            lines = optimized_result_main_content.split('\n')
+            sql_lines = []
+            in_sql_section = False
+            
+            for line in lines:
+                line_stripped = line.strip()
+                
+                if any(keyword in line.upper() for keyword in ['SELECT', 'FROM', 'WHERE', 'WITH', 'CREATE', 'INSERT', 'UPDATE', 'DELETE']):
+                    in_sql_section = True
+                
+                if in_sql_section:
+                    if (line_stripped.startswith('#') or 
+                        line_stripped.startswith('*') or 
+                        line_stripped.startswith('##') or
+                        line_stripped.startswith('**') or
+                        line_stripped.startswith('---') or
+                        line_stripped.startswith('===') or
+                        '改善ポイント' in line_stripped or
+                        '期待効果' in line_stripped or
+                        'BROADCAST適用根拠' in line_stripped):
+                        in_sql_section = False
+                    else:
+                        sql_lines.append(line)
+            
+            optimized_sql = '\n'.join(sql_lines).strip()
     
     # SQL構文の基本チェック（完全性確認）
     if optimized_sql:
@@ -8106,6 +8118,14 @@ def save_optimized_sql_files(original_query: str, optimized_result: str, metrics
             f.write(f"-- 最適化日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"-- ファイル: {optimized_filename}\n\n")
             
+            # 🎯 CATALOG/DATABASE設定の自動追加
+            catalog_name = globals().get('CATALOG', 'tpcds')
+            database_name = globals().get('DATABASE', 'tpcds_sf1000_delta_lc')
+            
+            f.write(f"-- 🗂️ カタログ・スキーマ設定（自動追加）\n")
+            f.write(f"USE CATALOG {catalog_name};\n")
+            f.write(f"USE SCHEMA {database_name};\n\n")
+            
             if optimized_sql:
                 # SQLの末尾にセミコロンを確実に追加
                 optimized_sql_clean = optimized_sql.strip()
@@ -8114,31 +8134,36 @@ def save_optimized_sql_files(original_query: str, optimized_result: str, metrics
                 
                 # 最終的な構文チェック
                 if validate_final_sql_syntax(optimized_sql_clean):
+                    f.write(f"-- 🚀 最適化されたクエリ\n")
                     f.write(optimized_sql_clean)
                 else:
                     f.write("-- ⚠️ 構文エラーが検出されました。手動で確認してください。\n")
                     f.write(f"-- 元のSQL:\n{optimized_sql_clean}\n")
                     f.write("-- 以下は最適化分析の全結果です:\n\n")
-                    f.write(f"/*\n{optimized_result_main_content}\n*/")
+                    debug_content = llm_response if llm_response else optimized_result
+                    f.write(f"/*\n{debug_content}\n*/")
             else:
                 f.write("-- ⚠️ SQLコードの自動抽出に失敗しました\n")
                 f.write("-- 以下は最適化分析の全結果です:\n\n")
-                f.write(f"/*\n{optimized_result_main_content}\n*/")
+                debug_content = llm_response if llm_response else optimized_result
+                f.write(f"/*\n{debug_content}\n*/")
     except Exception as e:
         print(f"⚠️ SQLファイル保存中にエラーが発生しました: {str(e)}")
         # エラー時は基本的なファイルを生成
         with open(optimized_filename, 'w', encoding='utf-8') as f:
             f.write(f"-- ⚠️ SQLファイル保存中にエラーが発生しました: {str(e)}\n")
-            f.write(f"-- 最適化結果:\n{optimized_result_main_content}\n")
+            error_content = llm_response if llm_response else optimized_result
+            f.write(f"-- 最適化結果:\n{error_content}\n")
     
     # 分析レポートファイルの保存（LLMで推敲された読みやすいレポート）
     report_filename = f"output_optimization_report_{timestamp}.md"
     
     print("🤖 LLMによるレポート推敲を実行中...")
     
-    # 初期レポートの生成
+    # 初期レポートの生成（レポート用データを使用）
+    report_data = llm_response if llm_response else optimized_result
     initial_report = generate_comprehensive_optimization_report(
-        query_id, optimized_result_for_file, metrics, analysis_result
+        query_id, report_data, metrics, analysis_result
     )
     
     # LLMでレポートを推敲（詳細な技術情報を保持）
@@ -8534,10 +8559,11 @@ def execute_explain_with_retry_logic(original_query: str, analysis_result: str, 
                 
                 # フォールバック: 元クエリでのファイル生成
                 fallback_result = save_optimized_sql_files(
-                    original_query, 
-                    f"# 🚨 最適化クエリのEXPLAIN実行が{max_retries}回とも失敗したため、元クエリを使用\n\n## 最後のエラー情報\n{error_message}\n\n## 元のクエリ\n```sql\n{original_query}\n```",
+                    original_query,
+                    original_query,  # 成功したクエリ（元クエリ）
                     metrics,
-                    analysis_result
+                    analysis_result,
+                    f"# 🚨 最適化クエリのEXPLAIN実行が{max_retries}回とも失敗したため、元クエリを使用\n\n## 最後のエラー情報\n{error_message}\n\n## 元のクエリ\n```sql\n{original_query}\n```"  # LLMレスポンス用説明
                 )
                 
                 # 失敗時のログ記録
@@ -8966,12 +8992,13 @@ elif original_query_for_explain and original_query_for_explain.strip():
                 optimized_result = retry_result.get('optimized_result', '')
                 final_query = retry_result.get('final_query', original_query_for_explain)
                 
-                # ファイル保存
+                # ファイル保存（final_queryを使用して成功したクエリを保存）
                 saved_files = save_optimized_sql_files(
                     original_query_for_explain,
-                    optimized_result,
+                    final_query,  # 成功したクエリを使用
                     current_metrics,
-                    analysis_result_str
+                    analysis_result_str,
+                    optimized_result  # レポート用の元LLMレスポンス
                 )
                 
                 print("\n📁 最適化レポート・SQLファイル:")
