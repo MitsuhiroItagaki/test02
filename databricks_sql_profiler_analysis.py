@@ -8299,6 +8299,49 @@ else:
     """
     print(f"📝 サンプルクエリを設定しました")
 
+# 📁 オリジナルクエリをファイルに保存
+print("\n📁 オリジナルクエリのファイル保存")
+print("-" * 40)
+
+from datetime import datetime
+
+# タイムスタンプ付きファイル名を生成
+timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+original_query_filename = f"output_original_query_{timestamp}.sql"
+
+try:
+    # カタログとデータベース設定の取得
+    catalog_name = globals().get('CATALOG', 'tpcds')
+    database_name = globals().get('DATABASE', 'tpcds_sf1000_delta_lc')
+    
+    with open(original_query_filename, 'w', encoding='utf-8') as f:
+        f.write(f"-- 📋 オリジナルクエリ（プロファイラーデータから抽出）\n")
+        f.write(f"-- 抽出日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"-- ファイル: {original_query_filename}\n")
+        f.write(f"-- クエリ文字数: {len(original_query):,}\n\n")
+        
+        # カタログ・スキーマ設定の追加
+        f.write(f"-- 🗂️ カタログ・スキーマ設定（自動追加）\n")
+        f.write(f"USE CATALOG {catalog_name};\n")
+        f.write(f"USE SCHEMA {database_name};\n\n")
+        
+        # オリジナルクエリの書き込み
+        f.write(f"-- 🔍 オリジナルクエリ\n")
+        f.write(original_query)
+        
+        # ファイル末尾に改行を追加
+        if not original_query.endswith('\n'):
+            f.write('\n')
+    
+    print(f"✅ オリジナルクエリを保存: {original_query_filename}")
+    print(f"📊 保存したクエリ文字数: {len(original_query):,}")
+    print(f"💾 ファイルパス: ./{original_query_filename}")
+    print("📌 このファイルはDEBUG_ENABLE設定に関係なく最終アウトプットとして保持されます")
+    
+except Exception as e:
+    print(f"❌ オリジナルクエリのファイル保存に失敗: {str(e)}")
+    print("⚠️ 処理は続行しますが、オリジナルクエリファイルは作成されませんでした")
+
 # COMMAND ----------
 
 # MAGIC %md
@@ -9567,21 +9610,23 @@ else:
     print("\n🧹 中間ファイルの削除処理")
     print("-" * 40)
     print("💡 DEBUG_ENABLE=N のため、中間ファイルを削除します")
-    print("📁 保持されるファイル: output_optimization_report_*.md, output_optimized_query_*.sql")
+    print("📁 保持されるファイル: output_original_query_*.sql, output_optimization_report_*.md, output_optimized_query_*.sql")
     
     import glob
     import os
     
     if explain_enabled.upper() == 'Y':
-        # EXPLAIN結果ファイルを検索
+        # EXPLAIN結果ファイルとエラーファイルを検索
         explain_files = glob.glob("output_explain_plan_*.txt")
+        error_files = glob.glob("output_explain_error_*.txt")
+        all_temp_files = explain_files + error_files
         
-        if explain_files:
-            print(f"📁 削除対象のEXPLAIN結果ファイル: {len(explain_files)} 個")
+        if all_temp_files:
+            print(f"📁 削除対象ファイル: EXPLAIN結果 {len(explain_files)} 個, エラーファイル {len(error_files)} 個")
             
             # 🔧 変数の初期化をより安全に実行
             deleted_count = 0
-            for file_path in explain_files:
+            for file_path in all_temp_files:
                 try:
                     os.remove(file_path)
                     print(f"✅ 削除完了: {file_path}")
@@ -9589,10 +9634,10 @@ else:
                 except Exception as e:
                     print(f"❌ 削除失敗: {file_path} - {str(e)}")
             
-            print(f"🗑️ 削除完了: {deleted_count}/{len(explain_files)} ファイル")
-            print("💡 EXPLAIN結果はLLMによる最適化処理で使用済みのため削除しました")
+            print(f"🗑️ 削除完了: {deleted_count}/{len(all_temp_files)} ファイル")
+            print("💡 EXPLAIN結果とエラーファイルはLLMによる最適化処理で使用済みのため削除しました")
         else:
-            print("📁 削除対象のEXPLAIN結果ファイルが見つかりませんでした")
+            print("📁 削除対象のEXPLAIN結果・エラーファイルが見つかりませんでした")
     else:
         print("⚠️ EXPLAIN実行が無効化されているため、EXPLAIN結果ファイルの削除処理をスキップしました")
 
