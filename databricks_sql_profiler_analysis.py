@@ -9229,68 +9229,68 @@ print()
 # COMMAND ----------
 # 
 # # MAGIC %md
-# # MAGIC ## 📝 レポート推敲処理 - コメントアウト
+# MAGIC ## 📝 レポート推敲処理（統合処理用）
 # # MAGIC
 # # MAGIC このセルでは以下の処理を実行します：
 # # MAGIC - セル47で出力されたレポートファイルの読み込み
 # # MAGIC - LLMによるレポートの推敲（読みやすく、簡潔に）
 # # MAGIC - 推敲されたレポートファイルの生成
 # # MAGIC
-# # MAGIC **注意: 現在はコメントアウトされています。新しい統合処理を使用してください。**
+# MAGIC **注意: このセルは既存レポートファイルの再推敲や個別調整に使用します。**
 # 
 # # COMMAND ----------
 # 
-# # 📝 レポート推敲処理 - コメントアウト
-# # print("\n📝 レポート推敲処理")
-# # print("-" * 40)
+# 📝 レポート推敲処理（統合処理用）
+print("\n📝 レポート推敲処理")
+print("-" * 40)
 # 
-# def find_latest_report_file() -> str:
-#     """最新のレポートファイルを見つける"""
-#     import os
-#     import glob
-#     
-#     # 現在のディレクトリでレポートファイルを検索
-#     pattern = "output_optimization_report_*.md"
-#     report_files = glob.glob(pattern)
-#     
-#     if not report_files:
-#         return None
-#     
-#     # 最新のファイルを取得（タイムスタンプ順）
-#     latest_file = max(report_files, key=os.path.getctime)
-#     return latest_file
+def find_latest_report_file() -> str:
+    """最新のレポートファイルを見つける"""
+    import os
+    import glob
+    
+    # 現在のディレクトリでレポートファイルを検索
+    pattern = "output_optimization_report_*.md"
+    report_files = glob.glob(pattern)
+    
+    if not report_files:
+        return None
+    
+    # 最新のファイルを取得（タイムスタンプ順）
+    latest_file = max(report_files, key=os.path.getctime)
+    return latest_file
 # 
-# def refine_report_content_with_llm(report_content: str) -> str:
-#     """LLMを使ってレポートを推敲する"""
-#     
-#     # LLMプロバイダーの設定確認
-#     if not LLM_CONFIG or not LLM_CONFIG.get('provider'):
-#         print("❌ LLMプロバイダーが設定されていません")
-#         return report_content
-#     
-#     # Photon利用率の抽出と評価判定
-#     import re
-#     photon_pattern = r'利用率[：:]\s*(\d+(?:\.\d+)?)%'
-#     photon_match = re.search(photon_pattern, report_content)
-#     
-#     photon_evaluation_instruction = ""
-#     if photon_match:
-#         photon_utilization = float(photon_match.group(1))
-#         if photon_utilization <= 80:
-#             photon_evaluation_instruction = """
+def refine_report_content_with_llm(report_content: str) -> str:
+    """LLMを使ってレポートを推敲する"""
+    
+    # LLMプロバイダーの設定確認
+    if not LLM_CONFIG or not LLM_CONFIG.get('provider'):
+        print("❌ LLMプロバイダーが設定されていません")
+        return report_content
+    
+    # Photon利用率の抽出と評価判定
+    import re
+    photon_pattern = r'利用率[：:]\s*(\d+(?:\.\d+)?)%'
+    photon_match = re.search(photon_pattern, report_content)
+    
+    photon_evaluation_instruction = ""
+    if photon_match:
+        photon_utilization = float(photon_match.group(1))
+        if photon_utilization <= 80:
+            photon_evaluation_instruction = """
 # 【Photon利用率評価指示】
 # - Photon利用率が80%以下の場合は「要改善」または「不良」の評価を明確に表示してください
 # - 80%以下の場合は、改善の必要性を強調し、具体的な改善アクションを提示してください
 # - 評価例: 「Photon利用率: XX% (評価: 要改善)」
 # """
-#         else:
-#             photon_evaluation_instruction = """
+        else:
+            photon_evaluation_instruction = """
 # 【Photon利用率評価指示】
 # - Photon利用率が80%以上の場合は「良好」の評価を表示してください
 # - 評価例: 「Photon利用率: XX% (評価: 良好)」
 # """
-#     
-#     refinement_prompt = f"""あなたは技術文書の編集者です。以下のDatabricks SQLパフォーマンス分析レポートを、読みやすく簡潔に推敲してください。
+    
+    refinement_prompt = f"""あなたは技術文書の編集者です。以下のDatabricks SQLパフォーマンス分析レポートを、読みやすく簡潔に推敲してください。
 # 
 # 【推敲の要件】
 # 1. 全体的な構成を整理し、情報を論理的に配置する
@@ -9324,145 +9324,145 @@ print()
 # - **必須**: テーブル別の詳細分析情報（現在のキー、推奨キー、フィルタ率）を削除しない
 # - **必須**: SQL実装例（ALTER TABLE、CLUSTER BY等）は完全な形で保持
 # """
-#     
-#     try:
-#         # 設定されたLLMプロバイダーに基づいて推敲を実行
-#         provider = LLM_CONFIG.get('provider', 'databricks')
-#         
-#         if provider == 'databricks':
-#             refined_content = _call_databricks_llm(refinement_prompt)
-#         elif provider == 'openai':
-#             refined_content = _call_openai_llm(refinement_prompt)
-#         elif provider == 'azure_openai':
-#             refined_content = _call_azure_openai_llm(refinement_prompt)
-#         elif provider == 'anthropic':
-#             refined_content = _call_anthropic_llm(refinement_prompt)
-#         else:
-#             print(f"❌ 未対応のLLMプロバイダー: {provider}")
-#             return report_content
-#         
-#         # thinking_enabled対応: 結果がリストの場合の処理
-#         if isinstance(refined_content, list):
-#             refined_content = format_thinking_response(refined_content)
-#         
-#         return refined_content
-#         
-#     except Exception as e:
-#         print(f"❌ LLMによるレポート推敲中にエラーが発生: {str(e)}")
-#         return report_content
+    
+    try:
+        # 設定されたLLMプロバイダーに基づいて推敲を実行
+        provider = LLM_CONFIG.get('provider', 'databricks')
+        
+        if provider == 'databricks':
+            refined_content = _call_databricks_llm(refinement_prompt)
+        elif provider == 'openai':
+            refined_content = _call_openai_llm(refinement_prompt)
+        elif provider == 'azure_openai':
+            refined_content = _call_azure_openai_llm(refinement_prompt)
+        elif provider == 'anthropic':
+            refined_content = _call_anthropic_llm(refinement_prompt)
+        else:
+            print(f"❌ 未対応のLLMプロバイダー: {provider}")
+            return report_content
+        
+        # thinking_enabled対応: 結果がリストの場合の処理
+        if isinstance(refined_content, list):
+            refined_content = format_thinking_response(refined_content)
+        
+        return refined_content
+        
+    except Exception as e:
+        print(f"❌ LLMによるレポート推敲中にエラーが発生: {str(e)}")
+        return report_content
 # 
-# def save_refined_report(refined_content: str, original_filename: str) -> str:
-#     """推敲されたレポートを保存"""
-#     from datetime import datetime
-#     
-#     # 推敲版のファイル名を生成
-#     base_name = original_filename.replace('.md', '')
-#     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-#     refined_filename = f"{base_name}_refined_{timestamp}.md"
-#     
-#     try:
-#         with open(refined_filename, 'w', encoding='utf-8') as f:
-#             f.write(refined_content)
-#         
-#         print(f"✅ 推敲されたレポートを保存: {refined_filename}")
-#         return refined_filename
-#         
-#     except Exception as e:
-#         print(f"❌ 推敲レポートの保存中にエラー: {str(e)}")
-#         return None
+def save_refined_report(refined_content: str, original_filename: str) -> str:
+    """推敲されたレポートを保存"""
+    from datetime import datetime
+    
+    # 推敲版のファイル名を生成
+    base_name = original_filename.replace('.md', '')
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    refined_filename = f"{base_name}_refined_{timestamp}.md"
+    
+    try:
+        with open(refined_filename, 'w', encoding='utf-8') as f:
+            f.write(refined_content)
+        
+        print(f"✅ 推敲されたレポートを保存: {refined_filename}")
+        return refined_filename
+        
+    except Exception as e:
+        print(f"❌ 推敲レポートの保存中にエラー: {str(e)}")
+        return None
 # 
-# def finalize_report_files(original_filename: str, refined_filename: str) -> str:
-#     """元のファイルを削除し、推敲版ファイルを元のファイル名にリネーム"""
-#     import os
-#     
-#     try:
-#         # 元のファイルを削除
-#         if os.path.exists(original_filename):
-#             os.remove(original_filename)
-#             print(f"🗑️ 元のファイルを削除: {original_filename}")
-#         
-#         # 推敲版ファイルを元のファイル名にリネーム
-#         if os.path.exists(refined_filename):
-#             os.rename(refined_filename, original_filename)
-#             print(f"📝 推敲版ファイルをリネーム: {refined_filename} → {original_filename}")
-#             return original_filename
-#         else:
-#             print(f"❌ 推敲版ファイルが見つかりません: {refined_filename}")
-#             return None
-#             
-#     except Exception as e:
-#         print(f"❌ ファイル操作中にエラー: {str(e)}")
-#         return None
+def finalize_report_files(original_filename: str, refined_filename: str) -> str:
+    """元のファイルを削除し、推敲版ファイルを元のファイル名にリネーム"""
+    import os
+    
+    try:
+        # 元のファイルを削除
+        if os.path.exists(original_filename):
+            os.remove(original_filename)
+            print(f"🗑️ 元のファイルを削除: {original_filename}")
+        
+        # 推敲版ファイルを元のファイル名にリネーム
+        if os.path.exists(refined_filename):
+            os.rename(refined_filename, original_filename)
+            print(f"📝 推敲版ファイルをリネーム: {refined_filename} → {original_filename}")
+            return original_filename
+        else:
+            print(f"❌ 推敲版ファイルが見つかりません: {refined_filename}")
+            return None
+            
+    except Exception as e:
+        print(f"❌ ファイル操作中にエラー: {str(e)}")
+        return None
 # 
 # 
-# # メイン処理
-# try:
-#     # 最新のレポートファイルを検索
-#     latest_report = find_latest_report_file()
-#     
-#     if not latest_report:
-#         print("❌ レポートファイルが見つかりません")
-#         print("⚠️ セル47 (最適化結果の保存) を先に実行してください")
-#     else:
-#         print(f"📄 対象レポートファイル: {latest_report}")
-#         
-#         # レポートファイルの内容を読み込み
-#         with open(latest_report, 'r', encoding='utf-8') as f:
-#             original_content = f.read()
-#         
-#         print(f"📊 元レポートサイズ: {len(original_content):,} 文字")
-#         
-#         # LLMによる推敲を実行
-#         print("🤖 LLMによる推敲を実行中...")
-#         refined_content = refine_report_content_with_llm(original_content)
-#         
-#         if refined_content != original_content:
-#             print(f"📊 推敲後サイズ: {len(refined_content):,} 文字")
-#             
-#             # 推敲されたレポートを保存
-#             refined_filename = save_refined_report(refined_content, latest_report)
-#             
-#             if refined_filename:
-#                 print(f"📄 推敲版レポート: {refined_filename}")
-#                 
-#                 # ファイルサイズの確認
-#                 import os
-#                 if os.path.exists(refined_filename):
-#                     file_size = os.path.getsize(refined_filename)
-#                     print(f"📁 推敲版ファイルサイズ: {file_size:,} bytes")
-#                 
-#                 # 元のファイルを削除し、推敲版ファイルを元のファイル名にリネーム
-#                 final_filename = finalize_report_files(latest_report, refined_filename)
-#                 
-#                 if final_filename:
-#                     print(f"📄 最終レポートファイル: {final_filename}")
-#                     
-#                     # 最終ファイルサイズの確認
-#                     if os.path.exists(final_filename):
-#                         final_file_size = os.path.getsize(final_filename)
-#                         print(f"📁 最終ファイルサイズ: {final_file_size:,} bytes")
-#                 
-#                 print("✅ レポート推敲処理が完了しました")
-#                 
-#                 # 推敲の結果を表示（最初の1000文字）
-#                 print("\n📋 推敲結果のプレビュー:")
-#                 print("-" * 50)
-#                 preview = refined_content[:1000]
-#                 print(preview)
-#                 if len(refined_content) > 1000:
-#                     print(f"\n... (残り {len(refined_content) - 1000} 文字は {final_filename or latest_report} を参照)")
-#                 print("-" * 50)
-#             else:
-#                 print("❌ 推敲レポートの保存に失敗しました")
-#         else:
-#             print("⚠️ 推敲による変更はありませんでした")
-#             
-# except Exception as e:
-#     print(f"❌ レポート推敲処理中にエラーが発生: {str(e)}")
-#     import traceback
-#     traceback.print_exc()
+# メイン処理
+try:
+    # 最新のレポートファイルを検索
+    latest_report = find_latest_report_file()
+    
+    if not latest_report:
+        print("❌ レポートファイルが見つかりません")
+        print("⚠️ セル47 (最適化結果の保存) を先に実行してください")
+    else:
+        print(f"📄 対象レポートファイル: {latest_report}")
+        
+        # レポートファイルの内容を読み込み
+        with open(latest_report, 'r', encoding='utf-8') as f:
+            original_content = f.read()
+        
+        print(f"📊 元レポートサイズ: {len(original_content):,} 文字")
+        
+        # LLMによる推敲を実行
+        print("🤖 LLMによる推敲を実行中...")
+        refined_content = refine_report_content_with_llm(original_content)
+        
+        if refined_content != original_content:
+            print(f"📊 推敲後サイズ: {len(refined_content):,} 文字")
+            
+            # 推敲されたレポートを保存
+            refined_filename = save_refined_report(refined_content, latest_report)
+            
+            if refined_filename:
+                print(f"📄 推敲版レポート: {refined_filename}")
+                
+                # ファイルサイズの確認
+                import os
+                if os.path.exists(refined_filename):
+                    file_size = os.path.getsize(refined_filename)
+                    print(f"📁 推敲版ファイルサイズ: {file_size:,} bytes")
+                
+                # 元のファイルを削除し、推敲版ファイルを元のファイル名にリネーム
+                final_filename = finalize_report_files(latest_report, refined_filename)
+                
+                if final_filename:
+                    print(f"📄 最終レポートファイル: {final_filename}")
+                    
+                    # 最終ファイルサイズの確認
+                    if os.path.exists(final_filename):
+                        final_file_size = os.path.getsize(final_filename)
+                        print(f"📁 最終ファイルサイズ: {final_file_size:,} bytes")
+                
+                print("✅ レポート推敲処理が完了しました")
+                
+                # 推敲の結果を表示（最初の1000文字）
+                print("\n📋 推敲結果のプレビュー:")
+                print("-" * 50)
+                preview = refined_content[:1000]
+                print(preview)
+                if len(refined_content) > 1000:
+                    print(f"\n... (残り {len(refined_content) - 1000} 文字は {final_filename or latest_report} を参照)")
+                print("-" * 50)
+            else:
+                print("❌ 推敲レポートの保存に失敗しました")
+        else:
+            print("⚠️ 推敲による変更はありませんでした")
+            
+except Exception as e:
+    print(f"❌ レポート推敲処理中にエラーが発生: {str(e)}")
+    import traceback
+    traceback.print_exc()
 # 
-# print()
+print()
 # 
 # # 🧹 中間ファイルの削除処理（DEBUG_ENABLEフラグに基づく）
 debug_enabled = globals().get('DEBUG_ENABLE', 'N')
