@@ -8106,6 +8106,15 @@ def save_optimized_sql_files(original_query: str, optimized_result: str, metrics
             f.write(f"-- 最適化日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"-- ファイル: {optimized_filename}\n\n")
             
+            
+            # 🎯 CATALOG/DATABASE設定の自動追加
+            catalog_name = globals().get("CATALOG", "tpcds")
+            database_name = globals().get("DATABASE", "tpcds_sf1000_delta_lc")
+            
+            f.write(f"-- 🗂️ カタログ・スキーマ設定（自動追加）\n")
+            f.write(f"USE CATALOG {catalog_name};\n")
+            f.write(f"USE SCHEMA {database_name};\n\n")
+                
             if optimized_sql:
                 # SQLの末尾にセミコロンを確実に追加
                 optimized_sql_clean = optimized_sql.strip()
