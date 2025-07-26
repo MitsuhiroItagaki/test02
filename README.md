@@ -91,9 +91,16 @@ DEBUG_ENABLED = 'N'  # 最終ファイルのみ保持（本番用）
 
 **EXPLAIN_ENABLED**
 ```python
-EXPLAIN_ENABLED = 'Y'  # EXPLAIN文実行（推奨）
+EXPLAIN_ENABLED = 'Y'  # EXPLAIN文実行（推奨）- オリジナル・最適化後クエリ両方を保存
 EXPLAIN_ENABLED = 'N'  # EXPLAIN文スキップ
 ```
+
+#### 生成されるEXPLAINファイル
+**EXPLAIN_ENABLED='Y'** の場合、以下のファイルが生成されます：
+- `output_explain_original_YYYYMMDD-HHMMSS.txt` - オリジナルクエリのEXPLAIN結果
+- `output_explain_optimized_YYYYMMDD-HHMMSS.txt` - 最適化後クエリのEXPLAIN結果
+- `output_explain_error_original_*.txt` - オリジナルクエリEXPLAINエラー（必要時）
+- `output_explain_error_optimized_*.txt` - 最適化後クエリEXPLAINエラー（必要時）
 
 ## 使用方法
 
@@ -194,7 +201,8 @@ JSON_FILE_PATH = '/FileStore/shared_uploads/username/profiler_log.json'
 - **エラー修正**: 自動再試行機能（最大2回）
 - **フォールバック**: 元クエリ使用による確実な実行保証
 - **ログ機能**: 詳細な試行履歴とエラー分析
-- **デバッグモード**: `DEBUG_ENABLED='Y'`でEXPLAIN結果ファイル保存
+- **デバッグモード**: `DEBUG_ENABLED='Y'`で中間ファイル保持
+- **EXPLAIN結果保存**: `EXPLAIN_ENABLED='Y'`でオリジナル・最適化後クエリのEXPLAIN結果を識別可能なファイル名で保存
 - **ファイル管理**: 中間ファイル自動削除（DEBUG_ENABLED='N'時）
 
 ## ライセンス

@@ -8586,8 +8586,8 @@ def execute_explain_with_retry_logic(original_query: str, analysis_result: str, 
         attempt_num = retry_count + 1
         print(f"\n🔍 試行 {attempt_num}/{max_retries + 1}: EXPLAIN実行")
         
-        # EXPLAIN実行
-        explain_result = execute_explain_and_save_to_file(current_query)
+        # EXPLAIN実行（最適化後クエリ）
+        explain_result = execute_explain_and_save_to_file(current_query, "optimized")
         
         # 成功時の処理
         if 'explain_file' in explain_result and 'error_file' not in explain_result:
@@ -8747,24 +8747,32 @@ def extract_sql_from_llm_response(llm_response: str) -> str:
     return llm_response.strip()
 
 
-def execute_explain_and_save_to_file(original_query: str) -> Dict[str, str]:
+def execute_explain_and_save_to_file(original_query: str, query_type: str = "original") -> Dict[str, str]:
     """
-    オリジナルクエリのEXPLAIN文を実行し、DEBUG_ENABLED設定に基づいて結果をファイルに保存
+    クエリのEXPLAIN文を実行し、EXPLAIN_ENABLED設定に基づいて結果をファイルに保存
     CTASの場合はSELECT部分のみを抽出してEXPLAIN文に渡す
+    
+    Args:
+        original_query: EXPLAIN実行対象のクエリ
+        query_type: "original" または "optimized" でファイル名を識別
     """
     from datetime import datetime
     import os
     
     if not original_query or not original_query.strip():
-        print("❌ オリジナルクエリが空です")
+        print("❌ クエリが空です")
         return {}
     
-    # DEBUG_ENABLED設定を確認
+    # EXPLAIN_ENABLED設定を確認
+    explain_enabled = globals().get('EXPLAIN_ENABLED', 'N')
     debug_enabled = globals().get('DEBUG_ENABLED', 'N')
     
-    # ファイル名の生成（DEBUG_ENABLED=Yの場合のみ）
+    # ファイル名の生成（EXPLAIN_ENABLED=Yの場合のみ）
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    explain_filename = f"output_explain_plan_{timestamp}.txt" if debug_enabled.upper() == 'Y' else None
+    if explain_enabled.upper() == 'Y':
+        explain_filename = f"output_explain_{query_type}_{timestamp}.txt"
+    else:
+        explain_filename = None
     
     # CTASの場合はSELECT部分のみを抽出
     query_for_explain = extract_select_from_ctas(original_query)
@@ -8847,15 +8855,16 @@ def execute_explain_and_save_to_file(original_query: str) -> Dict[str, str]:
             for i, row in enumerate(explain_result[:preview_lines]):
                 print(f"{i+1:2d}: {str(row[0])[:100]}...")
             
-            # エラーファイルの保存（DEBUG_ENABLED=Yの場合のみ）
+            # エラーファイルの保存（EXPLAIN_ENABLED=Yの場合のみ）
             error_filename = None
-            if debug_enabled.upper() == 'Y':
-                error_filename = f"output_explain_error_{timestamp}.txt"
+            if explain_enabled.upper() == 'Y':
+                error_filename = f"output_explain_error_{query_type}_{timestamp}.txt"
                 with open(error_filename, 'w', encoding='utf-8') as f:
-                    f.write(f"# EXPLAIN実行エラー\n")
+                    f.write(f"# EXPLAIN実行エラー ({query_type}クエリ)\n")
                     f.write(f"実行日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                    f.write(f"クエリタイプ: {query_type}\n")
                     f.write(f"検出エラーパターン: {detected_error}\n")
-                    f.write(f"オリジナルクエリ文字数: {len(original_query):,}\n")
+                    f.write(f"クエリ文字数: {len(original_query):,}\n")
                     f.write("\n" + "=" * 80 + "\n")
                     f.write("EXPLAIN エラー結果:\n")
                     f.write("=" * 80 + "\n\n")
@@ -8865,7 +8874,7 @@ def execute_explain_and_save_to_file(original_query: str) -> Dict[str, str]:
                 if len(explain_result) > preview_lines:
                     print(f"... (残り {len(explain_result) - preview_lines} 行は {error_filename} を参照)")
             else:
-                print("💡 DEBUG_ENABLED=N のため、エラーファイルは保存されません")
+                print("💡 EXPLAIN_ENABLED=N のため、エラーファイルは保存されません")
                 if len(explain_result) > preview_lines:
                     print(f"... (残り {len(explain_result) - preview_lines} 行)")
             
@@ -8891,12 +8900,13 @@ def execute_explain_and_save_to_file(original_query: str) -> Dict[str, str]:
         for i, row in enumerate(explain_result[:preview_lines]):
             print(f"{i+1:2d}: {str(row[0])[:100]}...")
         
-        # 結果をファイルに保存（DEBUG_ENABLED=Yの場合のみ）
-        if debug_enabled.upper() == 'Y' and explain_filename:
+        # 結果をファイルに保存（EXPLAIN_ENABLED=Yの場合のみ）
+        if explain_enabled.upper() == 'Y' and explain_filename:
             with open(explain_filename, 'w', encoding='utf-8') as f:
-                f.write(f"# EXPLAIN実行結果\n")
+                f.write(f"# EXPLAIN実行結果 ({query_type}クエリ)\n")
                 f.write(f"実行日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                f.write(f"オリジナルクエリ文字数: {len(original_query):,}\n")
+                f.write(f"クエリタイプ: {query_type}\n")
+                f.write(f"クエリ文字数: {len(original_query):,}\n")
                 f.write("\n" + "=" * 80 + "\n")
                 f.write("EXPLAIN結果:\n")
                 f.write("=" * 80 + "\n\n")
@@ -8906,7 +8916,7 @@ def execute_explain_and_save_to_file(original_query: str) -> Dict[str, str]:
             if len(explain_result) > preview_lines:
                 print(f"... (残り {len(explain_result) - preview_lines} 行は {explain_filename} を参照)")
         else:
-            print("💡 DEBUG_ENABLED=N のため、EXPLAIN結果ファイルは保存されません")
+            print("💡 EXPLAIN_ENABLED=N のため、EXPLAIN結果ファイルは保存されません")
             if len(explain_result) > preview_lines:
                 print(f"... (残り {len(explain_result) - preview_lines} 行)")
         
@@ -8915,7 +8925,7 @@ def execute_explain_and_save_to_file(original_query: str) -> Dict[str, str]:
         result_dict = {
             'plan_lines': len(explain_result)
         }
-        if explain_filename and debug_enabled.upper() == 'Y':
+        if explain_filename and explain_enabled.upper() == 'Y':
             result_dict['explain_file'] = explain_filename
         
         return result_dict
@@ -8977,13 +8987,14 @@ def execute_explain_and_save_to_file(original_query: str) -> Dict[str, str]:
             print(f"🚨 エラー詳細: {error_message}")
             print(f"🚨 処理を終了します。")
             
-            # エラーファイルの保存（DEBUG_ENABLED=Yの場合のみ）
-            if debug_enabled.upper() == 'Y':
-                error_filename = f"output_explain_fatal_error_{timestamp}.txt"
+            # エラーファイルの保存（EXPLAIN_ENABLED=Yの場合のみ）
+            if explain_enabled.upper() == 'Y':
+                error_filename = f"output_explain_fatal_error_{query_type}_{timestamp}.txt"
                 try:
                     with open(error_filename, 'w', encoding='utf-8') as f:
-                        f.write(f"# FATAL EXPLAIN実行エラー (回復不可能)\n")
+                        f.write(f"# FATAL EXPLAIN実行エラー (回復不可能, {query_type}クエリ)\n")
                         f.write(f"実行日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                        f.write(f"クエリタイプ: {query_type}\n")
                         f.write(f"エラー内容: {error_message}\n")
                         f.write(f"エラータイプ: FATAL - Unrecoverable Error\n")
                         f.write("\n" + "=" * 80 + "\n")
@@ -8996,7 +9007,7 @@ def execute_explain_and_save_to_file(original_query: str) -> Dict[str, str]:
                 except Exception as file_error:
                     print(f"❌ Fatal エラーファイルの保存にも失敗: {str(file_error)}")
             else:
-                print("💡 DEBUG_ENABLED=N のため、Fatal エラーファイルは保存されません")
+                print("💡 EXPLAIN_ENABLED=N のため、Fatal エラーファイルは保存されません")
             
             # プログラムを終了
             import sys
@@ -9008,12 +9019,13 @@ def execute_explain_and_save_to_file(original_query: str) -> Dict[str, str]:
         
         # 非致命的なエラーの場合の処理
         error_filename = None
-        if debug_enabled.upper() == 'Y':
-            error_filename = f"output_explain_error_{timestamp}.txt"
+        if explain_enabled.upper() == 'Y':
+            error_filename = f"output_explain_error_{query_type}_{timestamp}.txt"
             try:
                 with open(error_filename, 'w', encoding='utf-8') as f:
-                    f.write(f"# EXPLAIN実行エラー\n")
+                    f.write(f"# EXPLAIN実行エラー ({query_type}クエリ)\n")
                     f.write(f"実行日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                    f.write(f"クエリタイプ: {query_type}\n")
                     f.write(f"エラー内容: {error_message}\n")
                     f.write("\n" + "=" * 80 + "\n")
                     f.write("実行しようとしたEXPLAIN文:\n")
@@ -9025,7 +9037,7 @@ def execute_explain_and_save_to_file(original_query: str) -> Dict[str, str]:
             except Exception as file_error:
                 print(f"❌ エラーファイルの保存にも失敗: {str(file_error)}")
         else:
-            print("💡 DEBUG_ENABLED=N のため、エラーファイルは保存されません")
+            print("💡 EXPLAIN_ENABLED=N のため、エラーファイルは保存されません")
         
         result_dict = {
             'error_message': error_message
@@ -9106,7 +9118,19 @@ elif original_query_for_explain and original_query_for_explain.strip():
             else:
                 analysis_result_str = str(current_analysis_result)
             
-            # 🚀 新しい統合処理: 設定可能な最大試行回数での自動エラー修正
+            # 🔍 ステップ1: オリジナルクエリのEXPLAIN実行
+            print("\n📋 ステップ1: オリジナルクエリのEXPLAIN実行（Photon対応状況分析）")
+            print("-" * 60)
+            original_explain_result = execute_explain_and_save_to_file(original_query_for_explain, "original")
+            
+            if 'explain_file' in original_explain_result:
+                print(f"✅ オリジナルクエリのEXPLAIN結果を保存: {original_explain_result['explain_file']}")
+            if 'plan_lines' in original_explain_result:
+                print(f"📊 オリジナルクエリ実行プラン行数: {original_explain_result['plan_lines']:,}")
+            
+            # 🚀 ステップ2: 新しい統合処理: 設定可能な最大試行回数での自動エラー修正
+            print("\n📋 ステップ2: LLM最適化 & 検証EXPLAIN実行（最大3回自動エラー修正）")
+            print("-" * 60)
             max_retries_setting = globals().get('MAX_RETRIES', 2)
             retry_result = execute_explain_with_retry_logic(
                 original_query_for_explain, 
@@ -9172,8 +9196,8 @@ elif original_query_for_explain and original_query_for_explain.strip():
             print(f"❌ 統合処理中にエラーが発生: {str(e)}")
             print("   従来のEXPLAIN実行に切り替えます...")
             
-            # フォールバック: 従来のEXPLAIN実行
-            explain_results = execute_explain_and_save_to_file(original_query_for_explain)
+            # フォールバック: 従来のEXPLAIN実行（オリジナルクエリ）
+            explain_results = execute_explain_and_save_to_file(original_query_for_explain, "original")
             
             if explain_results:
                 print("\n📁 生成されたファイル:")
@@ -9627,14 +9651,18 @@ if debug_enabled.upper() == 'Y':
     import os
     
     # 保持されるファイル一覧を表示
-    explain_files = glob.glob("output_explain_plan_*.txt") if explain_enabled.upper() == 'Y' else []
-    
-    if explain_files:
-        print(f"   🔍 EXPLAIN結果ファイル: {len(explain_files)} 個")
-        for file_path in explain_files[:3]:  # 最大3個まで表示
-            print(f"      📄 {file_path}")
-        if len(explain_files) > 3:
-            print(f"      ... 他 {len(explain_files) - 3} 個")
+    if explain_enabled.upper() == 'Y':
+        original_files = glob.glob("output_explain_original_*.txt")
+        optimized_files = glob.glob("output_explain_optimized_*.txt")
+        error_files = glob.glob("output_explain_error_*.txt")
+        all_files = original_files + optimized_files + error_files
+        
+        if all_files:
+            print(f"   🔍 EXPLAIN結果ファイル: オリジナル {len(original_files)} 個, 最適化後 {len(optimized_files)} 個, エラー {len(error_files)} 個")
+            for file_path in all_files[:3]:  # 最大3個まで表示
+                print(f"      📄 {file_path}")
+            if len(all_files) > 3:
+                print(f"      ... 他 {len(all_files) - 3} 個")
     
     print("✅ デバッグモード: ファイル削除処理をスキップしました")
 else:
@@ -9647,10 +9675,21 @@ else:
     import os
     
     if explain_enabled.upper() == 'Y':
-        # EXPLAIN結果ファイルとエラーファイルを検索
-        explain_files = glob.glob("output_explain_plan_*.txt")
-        error_files = glob.glob("output_explain_error_*.txt")
-        all_temp_files = explain_files + error_files
+        # EXPLAIN結果ファイルとエラーファイルを検索（新パターン + 旧パターン）
+        original_files = glob.glob("output_explain_original_*.txt")
+        optimized_files = glob.glob("output_explain_optimized_*.txt")
+        error_original_files = glob.glob("output_explain_error_original_*.txt")
+        error_optimized_files = glob.glob("output_explain_error_optimized_*.txt")
+        
+        # 旧パターンのファイルも削除対象に含める（下位互換性）
+        old_explain_files = glob.glob("output_explain_plan_*.txt")
+        old_error_files = glob.glob("output_explain_error_*.txt")
+        
+        all_temp_files = (original_files + optimized_files + error_original_files + 
+                         error_optimized_files + old_explain_files + old_error_files)
+        
+        explain_files = original_files + optimized_files + old_explain_files
+        error_files = error_original_files + error_optimized_files + old_error_files
         
         if all_temp_files:
             print(f"📁 削除対象ファイル: EXPLAIN結果 {len(explain_files)} 個, エラーファイル {len(error_files)} 個")
