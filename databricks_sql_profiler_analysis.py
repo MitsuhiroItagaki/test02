@@ -8944,15 +8944,14 @@ elif original_query_for_explain and original_query_for_explain.strip():
             else:
                 analysis_result_str = str(current_analysis_result)
             
-                         # 🚀 新しい統合処理: 設定可能な最大試行回数での自動エラー修正
-             max_retries_setting = globals().get('MAX_RETRIES', 2)
-             retry_result = execute_explain_with_retry_logic(
-                 original_query_for_explain, 
-                 analysis_result_str, 
-                 current_metrics, 
-                 max_retries=max_retries_setting
-             )
-            
+            # 🚀 新しい統合処理: 設定可能な最大試行回数での自動エラー修正
+            max_retries_setting = globals().get('MAX_RETRIES', 2)
+            retry_result = execute_explain_with_retry_logic(
+                original_query_for_explain, 
+                analysis_result_str, 
+                current_metrics, 
+                max_retries=max_retries_setting
+            )            
             # 結果の表示
             print(f"\n📊 最終結果: {retry_result['final_status']}")
             print(f"🔄 総試行回数: {retry_result['total_attempts']}")
