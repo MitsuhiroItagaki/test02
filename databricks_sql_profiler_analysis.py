@@ -8749,7 +8749,7 @@ def extract_sql_from_llm_response(llm_response: str) -> str:
 
 def execute_explain_and_save_to_file(original_query: str, query_type: str = "original") -> Dict[str, str]:
     """
-    クエリのEXPLAIN文を実行し、EXPLAIN_ENABLED設定に基づいて結果をファイルに保存
+    クエリのEXPLAIN文とEXPLAIN COST文を実行し、EXPLAIN_ENABLED設定に基づいて結果をファイルに保存
     CTASの場合はSELECT部分のみを抽出してEXPLAIN文に渡す
     
     Args:
@@ -8771,40 +8771,55 @@ def execute_explain_and_save_to_file(original_query: str, query_type: str = "ori
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     if explain_enabled.upper() == 'Y':
         explain_filename = f"output_explain_{query_type}_{timestamp}.txt"
+        explain_cost_filename = f"output_explain_cost_{query_type}_{timestamp}.txt"
     else:
         explain_filename = None
+        explain_cost_filename = None
     
     # CTASの場合はSELECT部分のみを抽出
     query_for_explain = extract_select_from_ctas(original_query)
     
-    # EXPLAIN文の生成
+    # EXPLAIN文とEXPLAIN COST文の生成
     explain_query = f"EXPLAIN {query_for_explain}"
+    explain_cost_query = f"EXPLAIN COST {query_for_explain}"
     
-    # EXPLAIN文の実行
+    # カタログとデータベースの設定を取得
+    catalog = globals().get('CATALOG', 'main')
+    database = globals().get('DATABASE', 'default')
+    
+    print(f"📂 使用カタログ: {catalog}")
+    print(f"🗂️ 使用データベース: {database}")
+    
+    # カタログとデータベースを設定
     try:
-        print("🔄 EXPLAIN文を実行中...")
-        
-        # カタログとデータベースの設定を取得
-        catalog = globals().get('CATALOG', 'main')
-        database = globals().get('DATABASE', 'default')
-        
-        print(f"📂 使用カタログ: {catalog}")
-        print(f"🗂️ 使用データベース: {database}")
-        
-        # カタログとデータベースを設定
         spark.sql(f"USE CATALOG {catalog}")
         spark.sql(f"USE DATABASE {database}")
+    except Exception as e:
+        print(f"⚠️ カタログ/データベース設定エラー: {str(e)}")
+    
+    # EXPLAIN文とEXPLAIN COST文の実行
+    try:
+        print("🔄 EXPLAIN文とEXPLAIN COST文を実行中...")
         
-        # Databricks環境でSpark SQLを実行
-        result = spark.sql(explain_query)
+        # 1. 通常のEXPLAIN実行
+        print("   📊 EXPLAIN実行中...")
+        explain_result_spark = spark.sql(explain_query)
+        explain_result = explain_result_spark.collect()
         
-        # 結果を収集
-        explain_result = result.collect()
-        
-        # 🚨 重要: EXPLAIN結果の内容をチェックしてエラーメッセージが含まれているかを確認
+        # EXPLAIN結果の内容をチェック
         explain_content = ""
         for row in explain_result:
             explain_content += str(row[0]) + "\n"
+        
+        # 2. EXPLAIN COST実行
+        print("   💰 EXPLAIN COST実行中...")
+        explain_cost_result_spark = spark.sql(explain_cost_query)
+        explain_cost_result = explain_cost_result_spark.collect()
+        
+        # EXPLAIN COST結果の内容をチェック
+        explain_cost_content = ""
+        for row in explain_cost_result:
+            explain_cost_content += str(row[0]) + "\n"
         
         # エラーパターンのチェック
         retryable_error_patterns = [
@@ -8837,52 +8852,81 @@ def execute_explain_and_save_to_file(original_query: str, query_type: str = "ori
             "[UNRESOLVED_COLUMN"
         ]
         
-        # EXPLAIN結果にエラーメッセージが含まれているかチェック
+        # 🚨 重要: EXPLAIN結果とEXPLAIN COST結果の両方をエラーチェック
         detected_error = None
+        error_source = None
+        
+        # 1. EXPLAIN結果のエラーチェック
         for pattern in retryable_error_patterns:
             if pattern in explain_content.lower():
                 detected_error = pattern
+                error_source = "EXPLAIN"
                 break
+        
+        # 2. EXPLAIN COST結果のエラーチェック（EXPLAINでエラーが見つからない場合のみ）
+        if not detected_error:
+            for pattern in retryable_error_patterns:
+                if pattern in explain_cost_content.lower():
+                    detected_error = pattern
+                    error_source = "EXPLAIN COST"
+                    break
         
         if detected_error:
             # エラーが検出された場合はエラーとして処理
-            print(f"❌ EXPLAIN結果でエラーを検出: {detected_error}")
+            print(f"❌ {error_source}結果でエラーを検出: {detected_error}")
             
             # 結果のプレビュー表示（エラー用）
-            print("\n📋 EXPLAIN結果のプレビュー:")
+            print(f"\n📋 {error_source}結果のプレビュー:")
             print("-" * 50)
-            preview_lines = min(10, len(explain_result))
-            for i, row in enumerate(explain_result[:preview_lines]):
-                print(f"{i+1:2d}: {str(row[0])[:100]}...")
+            if error_source == "EXPLAIN":
+                preview_lines = min(10, len(explain_result))
+                for i, row in enumerate(explain_result[:preview_lines]):
+                    print(f"{i+1:2d}: {str(row[0])[:100]}...")
+            else:
+                preview_lines = min(10, len(explain_cost_result))
+                for i, row in enumerate(explain_cost_result[:preview_lines]):
+                    print(f"{i+1:2d}: {str(row[0])[:100]}...")
             
             # エラーファイルの保存（EXPLAIN_ENABLED=Yの場合のみ）
             error_filename = None
+            error_cost_filename = None
             if explain_enabled.upper() == 'Y':
+                # EXPLAIN結果エラーファイル
                 error_filename = f"output_explain_error_{query_type}_{timestamp}.txt"
                 with open(error_filename, 'w', encoding='utf-8') as f:
                     f.write(f"# EXPLAIN実行エラー ({query_type}クエリ)\n")
                     f.write(f"実行日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                     f.write(f"クエリタイプ: {query_type}\n")
+                    f.write(f"エラー検出元: {error_source}\n")
                     f.write(f"検出エラーパターン: {detected_error}\n")
                     f.write(f"クエリ文字数: {len(original_query):,}\n")
                     f.write("\n" + "=" * 80 + "\n")
-                    f.write("EXPLAIN エラー結果:\n")
+                    f.write("EXPLAIN 結果:\n")
                     f.write("=" * 80 + "\n\n")
                     f.write(explain_content)
+                    f.write("\n" + "=" * 80 + "\n")
+                    f.write("EXPLAIN COST 結果:\n")
+                    f.write("=" * 80 + "\n\n")
+                    f.write(explain_cost_content)
                 
                 print(f"📄 エラー詳細を保存: {error_filename}")
-                if len(explain_result) > preview_lines:
+                if error_source == "EXPLAIN" and len(explain_result) > preview_lines:
                     print(f"... (残り {len(explain_result) - preview_lines} 行は {error_filename} を参照)")
+                elif error_source == "EXPLAIN COST" and len(explain_cost_result) > preview_lines:
+                    print(f"... (残り {len(explain_cost_result) - preview_lines} 行は {error_filename} を参照)")
             else:
                 print("💡 EXPLAIN_ENABLED=N のため、エラーファイルは保存されません")
-                if len(explain_result) > preview_lines:
+                if error_source == "EXPLAIN" and len(explain_result) > preview_lines:
                     print(f"... (残り {len(explain_result) - preview_lines} 行)")
+                elif error_source == "EXPLAIN COST" and len(explain_cost_result) > preview_lines:
+                    print(f"... (残り {len(explain_cost_result) - preview_lines} 行)")
             
             print("-" * 50)
             
             result_dict = {
-                'error_message': explain_content.strip(),
-                'detected_pattern': detected_error
+                'error_message': explain_content.strip() if error_source == "EXPLAIN" else explain_cost_content.strip(),
+                'detected_pattern': detected_error,
+                'error_source': error_source
             }
             if error_filename:
                 result_dict['error_file'] = error_filename
@@ -8890,8 +8934,9 @@ def execute_explain_and_save_to_file(original_query: str, query_type: str = "ori
             return result_dict
         
         # エラーが検出されなかった場合は成功として処理
-        print(f"✅ EXPLAIN実行成功")
-        print(f"📊 実行プラン行数: {len(explain_result):,}")
+        print(f"✅ EXPLAIN & EXPLAIN COST実行成功")
+        print(f"📊 EXPLAIN実行プラン行数: {len(explain_result):,}")
+        print(f"💰 EXPLAIN COST統計行数: {len(explain_cost_result):,}")
         
         # 結果のプレビュー表示
         print("\n📋 EXPLAIN結果のプレビュー:")
@@ -8900,8 +8945,15 @@ def execute_explain_and_save_to_file(original_query: str, query_type: str = "ori
         for i, row in enumerate(explain_result[:preview_lines]):
             print(f"{i+1:2d}: {str(row[0])[:100]}...")
         
+        print("\n💰 EXPLAIN COST結果のプレビュー:")
+        print("-" * 50)
+        cost_preview_lines = min(10, len(explain_cost_result))
+        for i, row in enumerate(explain_cost_result[:cost_preview_lines]):
+            print(f"{i+1:2d}: {str(row[0])[:100]}...")
+        
         # 結果をファイルに保存（EXPLAIN_ENABLED=Yの場合のみ）
-        if explain_enabled.upper() == 'Y' and explain_filename:
+        if explain_enabled.upper() == 'Y' and explain_filename and explain_cost_filename:
+            # EXPLAIN結果ファイル
             with open(explain_filename, 'w', encoding='utf-8') as f:
                 f.write(f"# EXPLAIN実行結果 ({query_type}クエリ)\n")
                 f.write(f"実行日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
@@ -8912,27 +8964,46 @@ def execute_explain_and_save_to_file(original_query: str, query_type: str = "ori
                 f.write("=" * 80 + "\n\n")
                 f.write(explain_content)
             
+            # EXPLAIN COST結果ファイル
+            with open(explain_cost_filename, 'w', encoding='utf-8') as f:
+                f.write(f"# EXPLAIN COST実行結果 ({query_type}クエリ)\n")
+                f.write(f"実行日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"クエリタイプ: {query_type}\n")
+                f.write(f"クエリ文字数: {len(original_query):,}\n")
+                f.write("\n" + "=" * 80 + "\n")
+                f.write("EXPLAIN COST結果（統計情報付き）:\n")
+                f.write("=" * 80 + "\n\n")
+                f.write(explain_cost_content)
+            
             print(f"📄 EXPLAIN結果を保存: {explain_filename}")
+            print(f"💰 EXPLAIN COST結果を保存: {explain_cost_filename}")
             if len(explain_result) > preview_lines:
                 print(f"... (残り {len(explain_result) - preview_lines} 行は {explain_filename} を参照)")
+            if len(explain_cost_result) > cost_preview_lines:
+                print(f"... (残り {len(explain_cost_result) - cost_preview_lines} 行は {explain_cost_filename} を参照)")
         else:
             print("💡 EXPLAIN_ENABLED=N のため、EXPLAIN結果ファイルは保存されません")
             if len(explain_result) > preview_lines:
                 print(f"... (残り {len(explain_result) - preview_lines} 行)")
+            if len(explain_cost_result) > cost_preview_lines:
+                print(f"... (残り {len(explain_cost_result) - cost_preview_lines} 行)")
         
         print("-" * 50)
         
         result_dict = {
-            'plan_lines': len(explain_result)
+            'plan_lines': len(explain_result),
+            'cost_lines': len(explain_cost_result)
         }
         if explain_filename and explain_enabled.upper() == 'Y':
             result_dict['explain_file'] = explain_filename
+        if explain_cost_filename and explain_enabled.upper() == 'Y':
+            result_dict['explain_cost_file'] = explain_cost_filename
         
         return result_dict
         
     except Exception as e:
         error_message = str(e)
-        print(f"❌ EXPLAIN文の実行に失敗: {error_message}")
+        print(f"❌ EXPLAIN文またはEXPLAIN COST文の実行に失敗: {error_message}")
         
         # 真の致命的エラー（リトライ不可能なエラー）のチェック
         truly_fatal_errors = [
@@ -9001,6 +9072,10 @@ def execute_explain_and_save_to_file(original_query: str, query_type: str = "ori
                         f.write("実行しようとしたEXPLAIN文:\n")
                         f.write("=" * 80 + "\n\n")
                         f.write(explain_query)
+                        f.write("\n\n" + "=" * 80 + "\n")
+                        f.write("実行しようとしたEXPLAIN COST文:\n")
+                        f.write("=" * 80 + "\n\n")
+                        f.write(explain_cost_query)
                     
                     print(f"📄 Fatal エラー詳細を保存: {error_filename}")
                     
@@ -9031,6 +9106,10 @@ def execute_explain_and_save_to_file(original_query: str, query_type: str = "ori
                     f.write("実行しようとしたEXPLAIN文:\n")
                     f.write("=" * 80 + "\n\n")
                     f.write(explain_query)
+                    f.write("\n\n" + "=" * 80 + "\n")
+                    f.write("実行しようとしたEXPLAIN COST文:\n")
+                    f.write("=" * 80 + "\n\n")
+                    f.write(explain_cost_query)
                 
                 print(f"📄 エラー詳細を保存: {error_filename}")
                 
@@ -9654,11 +9733,16 @@ if debug_enabled.upper() == 'Y':
     if explain_enabled.upper() == 'Y':
         original_files = glob.glob("output_explain_original_*.txt")
         optimized_files = glob.glob("output_explain_optimized_*.txt")
+        cost_original_files = glob.glob("output_explain_cost_original_*.txt")
+        cost_optimized_files = glob.glob("output_explain_cost_optimized_*.txt")
         error_files = glob.glob("output_explain_error_*.txt")
-        all_files = original_files + optimized_files + error_files
+        all_files = original_files + optimized_files + cost_original_files + cost_optimized_files + error_files
         
         if all_files:
-            print(f"   🔍 EXPLAIN結果ファイル: オリジナル {len(original_files)} 個, 最適化後 {len(optimized_files)} 個, エラー {len(error_files)} 個")
+            print(f"   🔍 EXPLAIN結果ファイル:")
+            print(f"      📊 EXPLAIN: オリジナル {len(original_files)} 個, 最適化後 {len(optimized_files)} 個")
+            print(f"      💰 EXPLAIN COST: オリジナル {len(cost_original_files)} 個, 最適化後 {len(cost_optimized_files)} 個")
+            print(f"      ❌ エラー: {len(error_files)} 個")
             for file_path in all_files[:3]:  # 最大3個まで表示
                 print(f"      📄 {file_path}")
             if len(all_files) > 3:
@@ -9678,6 +9762,8 @@ else:
         # EXPLAIN結果ファイルとエラーファイルを検索（新パターン + 旧パターン）
         original_files = glob.glob("output_explain_original_*.txt")
         optimized_files = glob.glob("output_explain_optimized_*.txt")
+        cost_original_files = glob.glob("output_explain_cost_original_*.txt")
+        cost_optimized_files = glob.glob("output_explain_cost_optimized_*.txt")
         error_original_files = glob.glob("output_explain_error_original_*.txt")
         error_optimized_files = glob.glob("output_explain_error_optimized_*.txt")
         
@@ -9685,14 +9771,18 @@ else:
         old_explain_files = glob.glob("output_explain_plan_*.txt")
         old_error_files = glob.glob("output_explain_error_*.txt")
         
-        all_temp_files = (original_files + optimized_files + error_original_files + 
-                         error_optimized_files + old_explain_files + old_error_files)
+        all_temp_files = (original_files + optimized_files + cost_original_files + cost_optimized_files + 
+                         error_original_files + error_optimized_files + old_explain_files + old_error_files)
         
         explain_files = original_files + optimized_files + old_explain_files
+        cost_files = cost_original_files + cost_optimized_files
         error_files = error_original_files + error_optimized_files + old_error_files
         
         if all_temp_files:
-            print(f"📁 削除対象ファイル: EXPLAIN結果 {len(explain_files)} 個, エラーファイル {len(error_files)} 個")
+            print(f"📁 削除対象ファイル:")
+            print(f"   📊 EXPLAIN結果: {len(explain_files)} 個")
+            print(f"   💰 EXPLAIN COST結果: {len(cost_files)} 個")
+            print(f"   ❌ エラーファイル: {len(error_files)} 個")
             print("💡 注意: DEBUG_ENABLED=N のため、これらのファイルは作成されていないはずです")
             
             # 🔧 変数の初期化をより安全に実行
@@ -9706,9 +9796,9 @@ else:
                     print(f"❌ 削除失敗: {file_path} - {str(e)}")
             
             print(f"🗑️ 削除完了: {deleted_count}/{len(all_temp_files)} ファイル")
-            print("💡 EXPLAIN結果とエラーファイルはLLMによる最適化処理で使用済みのため削除しました")
+            print("💡 EXPLAIN・EXPLAIN COST結果とエラーファイルはLLMによる最適化処理で使用済みのため削除しました")
         else:
-            print("📁 削除対象のEXPLAIN結果・エラーファイルが見つかりませんでした")
+            print("📁 削除対象のEXPLAIN・EXPLAIN COST結果・エラーファイルが見つかりませんでした")
     else:
         print("⚠️ EXPLAIN実行が無効化されているため、EXPLAIN結果ファイルの削除処理をスキップしました")
 
