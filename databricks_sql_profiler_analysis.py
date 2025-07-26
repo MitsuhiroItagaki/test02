@@ -9228,15 +9228,15 @@ print()
 
 # COMMAND ----------
 # 
-# # MAGIC %md
+# MAGIC %md
 # MAGIC ## 📝 レポート推敲処理（統合処理用）
-# # MAGIC
-# # MAGIC このセルでは以下の処理を実行します：
-# # MAGIC - セル47で出力されたレポートファイルの読み込み
-# # MAGIC - LLMによるレポートの推敲（読みやすく、簡潔に）
-# # MAGIC - 推敲されたレポートファイルの生成
-# # MAGIC
-# MAGIC **注意: このセルは既存レポートファイルの再推敲や個別調整に使用します。**
+# MAGIC
+# MAGIC このセルでは以下の処理を実行します：
+# MAGIC - セル47で出力されたレポートファイルの読み込み
+# MAGIC - LLMによるレポートの推敲（読みやすく、簡潔に）
+# MAGIC - 推敲されたレポートファイルの生成
+# MAGIC
+# MAGIC **Note: This cell is used for re-refining existing report files and individual adjustments**
 # 
 # # COMMAND ----------
 # 
