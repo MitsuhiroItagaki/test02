@@ -8022,7 +8022,7 @@ def validate_final_sql_syntax(sql_query: str) -> bool:
     
     return True
 
-def save_optimized_sql_files(original_query: str, optimized_result: str, metrics: Dict[str, Any], analysis_result: str = "") -> Dict[str, str]:
+def save_optimized_sql_files(original_query: str, optimized_result: str, metrics: Dict[str, Any], analysis_result: str = "", llm_response: str = "") -> Dict[str, str]:
     """
     最適化されたSQLクエリを実行可能な形でファイルに保存
     
@@ -8136,9 +8136,10 @@ def save_optimized_sql_files(original_query: str, optimized_result: str, metrics
     
     print("🤖 LLMによるレポート推敲を実行中...")
     
-    # 初期レポートの生成
+    # 初回レポートの生成（レポート用データを使用）
+    report_data = llm_response if llm_response else optimized_result
     initial_report = generate_comprehensive_optimization_report(
-        query_id, optimized_result_for_file, metrics, analysis_result
+        query_id, report_data, metrics, analysis_result
     )
     
     # LLMでレポートを推敲（詳細な技術情報を保持）
