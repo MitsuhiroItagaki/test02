@@ -8411,16 +8411,37 @@ def extract_select_from_ctas(query: str) -> str:
     print("📋 通常のクエリ: そのままEXPLAIN文に使用")
     return query
 
-def generate_optimized_query_with_error_feedback(original_query: str, analysis_result: str, metrics: Dict[str, Any], error_info: str = "") -> str:
+def generate_optimized_query_with_error_feedback(original_query: str, analysis_result: str, metrics: Dict[str, Any], error_info: str = "", previous_optimized_query: str = "") -> str:
     """
     エラー情報を含めてLLMによるSQL最適化を実行
     エラー修正に特化したプロンプトを使用
     """
     
+    # 初回最適化クエリの情報を含める
+    previous_query_section = ""
+    if previous_optimized_query:
+        previous_query_section = f"""
+【🚀 初回生成された最適化クエリ（エラー発生）】
+```sql
+{previous_optimized_query}
+```
+
+**⚠️ 重要**: 上記の最適化クエリに含まれる以下の要素は必ず保持してください：
+- **BROADCASTヒント**: `/*+ BROADCAST(table_name) */`
+- **REPARTITIONヒント**: `/*+ REPARTITION(数値, カラム名) */`
+- **その他の最適化ヒント**: COALESCE、CACHE等
+- **最適化手法**: CTE構造、結合順序、フィルタープッシュダウン等
+- **パフォーマンス改善策**: スピル対策、並列度改善等
+
+**🎯 エラー修正の方針**: 
+- エラー箇所のみを修正し、最適化要素は全て保持
+- ヒント句の配置ルールは厳守（BROADCASTはメインクエリSELECT直後等）
+"""
+
     error_feedback_prompt = f"""
 あなたはDatabricksのSQLパフォーマンス最適化とエラー修正の専門家です。
 
-以下の最適化クエリでEXPLAIN実行時にエラーが発生しました。エラー情報を基に修正してください。
+以下の最適化クエリでEXPLAIN実行時にエラーが発生しました。**最適化要素を保持しながら**エラー情報を基に修正してください。
 
 【🚨 発生したエラー情報】
 {error_info}
@@ -8429,12 +8450,19 @@ def generate_optimized_query_with_error_feedback(original_query: str, analysis_r
 ```sql
 {original_query}
 ```
-
+{previous_query_section}
 【詳細なボトルネック分析結果】
 {analysis_result}
 
 【🔧 エラー修正の重要な指針】
-1. **🚨 AMBIGUOUS_REFERENCE エラーの最優先修正**: 
+1. **🚀 最適化要素の絶対保持（最重要）**:
+   - **初回生成されたBROADCASTヒントを必ず保持**: `/*+ BROADCAST(table_name) */`
+   - **初回生成されたREPARTITIONヒントを必ず保持**: `/*+ REPARTITION(数値, カラム) */`
+   - **その他の最適化ヒントも全て保持**: COALESCE、CACHE等
+   - **CTE構造や結合順序などの最適化設計を維持**
+   - **スピル対策やパフォーマンス改善策を保持**
+
+2. **🚨 AMBIGUOUS_REFERENCE エラーの最優先修正**: 
    - **全てのカラム参照でテーブル名またはエイリアス名を明示的に指定**
    - 例: `ss_item_sk` → `store_sales.ss_item_sk` または `ss.ss_item_sk`
    - **JOINの条件でも必ずテーブル名/エイリアスを明示**
@@ -8443,17 +8471,16 @@ def generate_optimized_query_with_error_feedback(original_query: str, analysis_r
    - **GROUP BY、ORDER BY、WHERE句でも同様に明示**
    - **サブクエリとメインクエリで同名カラムがある場合は特に注意**
 
-2. **テーブルエイリアスの一貫使用**: 
+3. **テーブルエイリアスの一貫使用**: 
    - 全てのテーブルに短いエイリアス名を付与（例: store_sales → ss, item → i）
    - クエリ全体で一貫してエイリアス名を使用
    - サブクエリ内でも同じエイリアス名体系を維持
 
-3. **構文エラーの修正**: SQL構文の文法エラーを修正
-4. **テーブル・カラム名の確認**: 存在しないテーブルやカラムの修正
-5. **型変換エラーの修正**: 不適切な型変換やキャストの修正
-6. **ヒント句の修正**: 不正なヒント構文の修正
-7. **権限エラーの回避**: アクセス権限のないテーブルの代替策
-8. **最適化レベルの調整**: 複雑すぎる最適化の簡素化
+4. **構文エラーの修正**: SQL構文の文法エラーを修正
+5. **テーブル・カラム名の確認**: 存在しないテーブルやカラムの修正
+6. **型変換エラーの修正**: 不適切な型変換やキャストの修正
+7. **ヒント句の修正**: 不正なヒント構文の修正（位置は保持）
+8. **権限エラーの回避**: アクセス権限のないテーブルの代替策
 
 【🚨 BROADCASTヒント配置の厳格なルール - エラー修正版】
 - **必ずメインクエリの最初のSELECT文の直後のみ**に配置
@@ -8474,20 +8501,25 @@ def generate_optimized_query_with_error_feedback(original_query: str, analysis_r
 - 実際に実行できる完全なSQLクエリのみを出力
 - **🚨 AMBIGUOUS_REFERENCEエラー完全防止**: 全てのカラム参照でテーブル名/エイリアス必須
 - **テーブルエイリアス一貫使用**: 全クエリ内で統一されたエイリアス名体系を維持
+- **🚀 最適化要素の絶対保持**: 初回生成されたヒント句と最適化手法を必ず維持
 
 【出力形式】
 ## 🔧 エラー修正済み最適化SQL
 
 **修正した内容**:
 - [具体的なエラー修正箇所]
-- [適用した最適化手法]
+
+**保持した最適化要素**:
+- [保持されたBROADCASTヒント]
+- [保持されたREPARTITIONヒント]
+- [保持されたその他の最適化手法]
 
 ```sql
-[完全なSQL - エラー修正済み]
+[完全なSQL - エラー修正済み、最適化要素保持]
 ```
 
 ## 修正詳細
-[エラーの原因と修正方法の詳細説明]
+[エラーの原因と修正方法、および最適化要素保持の説明]
 """
 
     # 設定されたLLMプロバイダーを使用
@@ -8645,12 +8677,13 @@ def execute_explain_with_retry_logic(original_query: str, analysis_result: str, 
             retry_count += 1
             print(f"🔧 試行 {retry_count + 1} に向けてエラー修正中...")
             
-            # エラー情報を含めて再生成
+            # エラー情報を含めて再生成（初回最適化クエリも渡す）
             corrected_query = generate_optimized_query_with_error_feedback(
                 original_query, 
                 analysis_result, 
                 metrics, 
-                error_message
+                error_message,
+                current_query  # 🚀 初回最適化クエリ（ヒント付き）を渡す
             )
             
             # thinking_enabled対応
