@@ -80,13 +80,28 @@ LLM_CONFIG["provider"] = "anthropic"
 LLM_CONFIG["anthropic"]["api_key"] = "your-api-key"
 ```
 
+### 3. デバッグ・実行モード設定
+以下のパラメータでツールの動作を制御：
+
+**DEBUG_ENABLED**
+```python
+DEBUG_ENABLED = 'Y'  # EXPLAIN結果ファイル保存（デバッグ用）
+DEBUG_ENABLED = 'N'  # 最終ファイルのみ保持（本番用）
+```
+
+**EXPLAIN_ENABLED**
+```python
+EXPLAIN_ENABLED = 'Y'  # EXPLAIN文実行（推奨）
+EXPLAIN_ENABLED = 'N'  # EXPLAIN文スキップ
+```
+
 ## 使用方法
 
 ### 1. SQLプロファイラーJSONファイルの準備
 - Databricksでクエリ実行時にSQLプロファイラーを有効化
 - 生成されたJSONファイルをDBFS、FileStore、またはUnity Catalog Volumesに配置
 
-### 2. 分析対象ファイルの設定
+### 4. 分析対象ファイルの設定
 ```python
 # ファイルパスの設定例
 JSON_FILE_PATH = '/Volumes/catalog/schema/volume/profiler.json'
@@ -94,12 +109,12 @@ JSON_FILE_PATH = '/Volumes/catalog/schema/volume/profiler.json'
 JSON_FILE_PATH = '/FileStore/shared_uploads/username/profiler_log.json'
 ```
 
-### 3. 分析実行
+### 5. 分析実行
 1. Databricksノートブックで `databricks_sql_profiler_analysis.py` を開く
 2. 設定セクションでファイルパスとLLMエンドポイントを設定
 3. 全セルを順次実行
 
-### 4. 結果の確認
+### 6. 結果の確認
 - 詳細な分析レポートがMarkdown形式で出力
 - ボトルネック要因と具体的な改善案が提示
 - パフォーマンスメトリクスの可視化
@@ -179,6 +194,8 @@ JSON_FILE_PATH = '/FileStore/shared_uploads/username/profiler_log.json'
 - **エラー修正**: 自動再試行機能（最大2回）
 - **フォールバック**: 元クエリ使用による確実な実行保証
 - **ログ機能**: 詳細な試行履歴とエラー分析
+- **デバッグモード**: `DEBUG_ENABLED='Y'`でEXPLAIN結果ファイル保存
+- **ファイル管理**: 中間ファイル自動削除（DEBUG_ENABLED='N'時）
 
 ## ライセンス
 
