@@ -87,12 +87,12 @@ EXPLAIN_ENABLED = 'Y'
 # 🐛 デバッグモード設定（DEBUG_ENABLE: 'Y' = 中間ファイル保持, 'N' = 最終ファイルのみ保持）
 DEBUG_ENABLE = 'N'
 
-# 🔄 自動エラー修正の最大試行回数設定（MAX_RETRIES: デフォルト3回）
+# 🔄 自動エラー修正の最大試行回数設定（MAX_RETRIES: デフォルト2回）
 # LLMが生成した最適化クエリのEXPLAIN実行でエラーが発生した場合の再試行回数
 # - 1回目: 初回生成クエリでEXPLAIN実行
-# - 2-3回目: エラー情報をLLMに再入力して修正クエリを生成・再実行
+# - 2回目以降: エラー情報をLLMに再入力して修正クエリを生成・再実行
 # - 最大試行回数に達した場合: 元の動作可能クエリを使用してファイル生成
-MAX_RETRIES = 3
+MAX_RETRIES = 2
 
 # 🗂️ カタログとデータベース設定（EXPLAIN文実行時に使用）
 CATALOG = 'tpcds'
@@ -6141,15 +6141,6 @@ FROM (
 - 実際に実行できる完全なSQLクエリのみを出力してください
 - 元のクエリと同じアウトプットになることを厳守してください
 
-【🚨 AMBIGUOUS_REFERENCE エラー防止の必須ルール】
-- **全てのカラム参照でテーブル名またはエイリアス名を明示的に指定**
-- **JOINの条件では必ずテーブル名/エイリアスを明示**: `ss_item_sk = i_item_sk` → `ss.ss_item_sk = i.i_item_sk`
-- **SELECT句でも全てのカラムにテーブル名/エイリアスを付与**: `i_brand_id` → `i.i_brand_id`
-- **GROUP BY、ORDER BY、WHERE句でも同様に明示**: `GROUP BY i_brand_id` → `GROUP BY i.i_brand_id`
-- **サブクエリとメインクエリで同名カラムがある場合は特に注意深くエイリアス使用**
-- **CTEでもテーブルエイリアスを一貫して使用**
-- **全てのテーブルに短いエイリアス名を付与**（例: store_sales → ss, item → i, date_dim → d）
-
 【🚨 BROADCASTヒント配置の厳格なルール - 構文エラー防止】
 **絶対に守るべき文法ルール（構文エラー防止のため必須）:**
 
@@ -6277,12 +6268,6 @@ FROM cte1 c
 - [推定される性能改善効果]
 
 **🚨 構文エラー防止の最終確認**:
-- ✅ **AMBIGUOUS_REFERENCE エラー防止**: 全てのカラム参照でテーブル名/エイリアス名が明示されている
-- ✅ **JOINの条件**: 両側のカラムにテーブル名/エイリアスが指定されている（例: ss.ss_item_sk = i.i_item_sk）
-- ✅ **SELECT句**: 全てのカラムにテーブル名/エイリアスが付与されている（例: i.i_brand_id）
-- ✅ **GROUP BY、ORDER BY、WHERE句**: 全てのカラム参照にテーブル名/エイリアスが指定されている
-- ✅ **CTEとサブクエリ**: 同名カラムがある場合も適切にエイリアス使用されている
-- ✅ **テーブルエイリアス**: 全てのテーブルに一貫したエイリアス名が付与されている
 - ✅ 全てのBROADCASTヒントがメインクエリの最初のSELECT文の直後に配置されている
 - ✅ サブクエリ、CTE、JOINサブクエリ内部にBROADCASTヒントが配置されていない
 - ✅ FROM句、JOIN句、WHERE句内にヒントが配置されていない
@@ -6307,9 +6292,7 @@ FROM cte1 c
 -- 🚨 複数ヒント+DISTINCT例: SELECT /*+ REPARTITION(200), BROADCAST(small_table) */ DISTINCT t1.column1, t2.column2, ...
 -- 無効な例: SELECT /*+ BROADCAST */ column1, column2, ... (テーブル名なし - 無効)
 -- 🚨 REPARTITIONヒントはサブクエリ内部に配置: SELECT ... FROM (SELECT /*+ REPARTITION(200, join_key) */ ... FROM table) ...
--- 🚨 AMBIGUOUS_REFERENCE防止: 全てのカラムにテーブル名/エイリアス必須
--- 例: ss.ss_item_sk = i.i_item_sk, SELECT i.i_brand_id, ss.ss_quantity, GROUP BY i.i_brand_id
-[完全なSQL - すべてのカラム・CTE・テーブル名を省略なしで記述、全カラム参照でテーブル名/エイリアス明示]
+[完全なSQL - すべてのカラム・CTE・テーブル名を省略なしで記述]
 ```
 
 ## 改善ポイント
@@ -8039,7 +8022,7 @@ def validate_final_sql_syntax(sql_query: str) -> bool:
     
     return True
 
-def save_optimized_sql_files(original_query: str, optimized_result: str, metrics: Dict[str, Any], analysis_result: str = "", llm_response: str = "") -> Dict[str, str]:
+def save_optimized_sql_files(original_query: str, optimized_result: str, metrics: Dict[str, Any], analysis_result: str = "") -> Dict[str, str]:
     """
     最適化されたSQLクエリを実行可能な形でファイルに保存
     
@@ -8053,9 +8036,15 @@ def save_optimized_sql_files(original_query: str, optimized_result: str, metrics
     import re
     from datetime import datetime
     
-    # 🎯 重要: optimized_resultは成功したクエリ（final_query）またはLLMレスポンス
-    # retry logicで成功した場合は final_query（SQL文字列）が渡される
-    # 失敗した場合は元のLLMレスポンスが渡される
+    # thinking_enabled: Trueの場合にoptimized_resultがリストになることがあるため対応
+    optimized_result_for_file = optimized_result
+    optimized_result_main_content = optimized_result
+    
+    if isinstance(optimized_result, list):
+        # ファイル保存用は人間に読みやすい形式に変換
+        optimized_result_for_file = format_thinking_response(optimized_result)
+        # SQL抽出用は主要コンテンツのみを使用
+        optimized_result_main_content = extract_main_content_from_thinking_response(optimized_result)
     
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     query_id = metrics.get('query_info', {}).get('query_id', 'unknown')
@@ -8066,62 +8055,44 @@ def save_optimized_sql_files(original_query: str, optimized_result: str, metrics
     # 最適化されたクエリの抽出と保存
     optimized_filename = f"output_optimized_query_{timestamp}.sql"
     
-    # 🚀 final_queryが直接渡された場合の処理（retry logic成功時）
-    optimized_sql = ""
+    # 最適化結果からSQLコードを抽出（主要コンテンツから抽出） - 改善版
+    sql_pattern = r'```sql\s*(.*?)\s*```'
+    sql_matches = re.findall(sql_pattern, optimized_result_main_content, re.DOTALL | re.IGNORECASE)
     
-    if llm_response:
-        # レポート用データとして元のLLMレスポンスが渡された場合
-        optimized_result_for_file = llm_response
-        optimized_result_main_content = llm_response
-        
-        if isinstance(llm_response, list):
-            optimized_result_for_file = format_thinking_response(llm_response)
-            optimized_result_main_content = extract_main_content_from_thinking_response(llm_response)
-        
-        # optimized_resultは成功したクエリなのでそのまま使用
-        optimized_sql = optimized_result.strip() if optimized_result else ""
+    optimized_sql = ""
+    if sql_matches:
+        # 最も長いSQLブロックを使用（完全性を優先）
+        optimized_sql = max(sql_matches, key=len).strip()
     else:
-        # 従来の処理（LLMレスポンスから抽出）
-        optimized_result_for_file = optimized_result
-        optimized_result_main_content = optimized_result
+        # SQLブロックが見つからない場合は、SQL関連の行を抽出（改善版）
+        lines = optimized_result_main_content.split('\n')
+        sql_lines = []
+        in_sql_section = False
         
-        if isinstance(optimized_result, list):
-            optimized_result_for_file = format_thinking_response(optimized_result)
-            optimized_result_main_content = extract_main_content_from_thinking_response(optimized_result)
-        
-        # LLMレスポンスからSQLコードを抽出
-        sql_pattern = r'```sql\s*(.*?)\s*```'
-        sql_matches = re.findall(sql_pattern, optimized_result_main_content, re.DOTALL | re.IGNORECASE)
-        
-        if sql_matches:
-            optimized_sql = max(sql_matches, key=len).strip()
-        else:
-            # SQLブロックが見つからない場合の抽出処理
-            lines = optimized_result_main_content.split('\n')
-            sql_lines = []
-            in_sql_section = False
+        for line in lines:
+            line_stripped = line.strip()
             
-            for line in lines:
-                line_stripped = line.strip()
-                
-                if any(keyword in line.upper() for keyword in ['SELECT', 'FROM', 'WHERE', 'WITH', 'CREATE', 'INSERT', 'UPDATE', 'DELETE']):
-                    in_sql_section = True
-                
-                if in_sql_section:
-                    if (line_stripped.startswith('#') or 
-                        line_stripped.startswith('*') or 
-                        line_stripped.startswith('##') or
-                        line_stripped.startswith('**') or
-                        line_stripped.startswith('---') or
-                        line_stripped.startswith('===') or
-                        '改善ポイント' in line_stripped or
-                        '期待効果' in line_stripped or
-                        'BROADCAST適用根拠' in line_stripped):
-                        in_sql_section = False
-                    else:
-                        sql_lines.append(line)
+            # SQLの開始を検出
+            if any(keyword in line.upper() for keyword in ['SELECT', 'FROM', 'WHERE', 'WITH', 'CREATE', 'INSERT', 'UPDATE', 'DELETE']):
+                in_sql_section = True
             
-            optimized_sql = '\n'.join(sql_lines).strip()
+            if in_sql_section:
+                # SQLの終了を検出（マークダウンセクションやレポートセクション）
+                if (line_stripped.startswith('#') or 
+                    line_stripped.startswith('*') or 
+                    line_stripped.startswith('##') or
+                    line_stripped.startswith('**') or
+                    line_stripped.startswith('---') or
+                    line_stripped.startswith('===') or
+                    '改善ポイント' in line_stripped or
+                    '期待効果' in line_stripped or
+                    'BROADCAST適用根拠' in line_stripped):
+                    in_sql_section = False
+                else:
+                    # 空行や有効なSQL行を追加
+                    sql_lines.append(line)
+        
+        optimized_sql = '\n'.join(sql_lines).strip()
     
     # SQL構文の基本チェック（完全性確認）
     if optimized_sql:
@@ -8135,14 +8106,6 @@ def save_optimized_sql_files(original_query: str, optimized_result: str, metrics
             f.write(f"-- 最適化日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"-- ファイル: {optimized_filename}\n\n")
             
-            # 🎯 CATALOG/DATABASE設定の自動追加
-            catalog_name = globals().get('CATALOG', 'tpcds')
-            database_name = globals().get('DATABASE', 'tpcds_sf1000_delta_lc')
-            
-            f.write(f"-- 🗂️ カタログ・スキーマ設定（自動追加）\n")
-            f.write(f"USE CATALOG {catalog_name};\n")
-            f.write(f"USE SCHEMA {database_name};\n\n")
-            
             if optimized_sql:
                 # SQLの末尾にセミコロンを確実に追加
                 optimized_sql_clean = optimized_sql.strip()
@@ -8151,36 +8114,31 @@ def save_optimized_sql_files(original_query: str, optimized_result: str, metrics
                 
                 # 最終的な構文チェック
                 if validate_final_sql_syntax(optimized_sql_clean):
-                    f.write(f"-- 🚀 最適化されたクエリ\n")
                     f.write(optimized_sql_clean)
                 else:
                     f.write("-- ⚠️ 構文エラーが検出されました。手動で確認してください。\n")
                     f.write(f"-- 元のSQL:\n{optimized_sql_clean}\n")
                     f.write("-- 以下は最適化分析の全結果です:\n\n")
-                    debug_content = llm_response if llm_response else optimized_result
-                    f.write(f"/*\n{debug_content}\n*/")
+                    f.write(f"/*\n{optimized_result_main_content}\n*/")
             else:
                 f.write("-- ⚠️ SQLコードの自動抽出に失敗しました\n")
                 f.write("-- 以下は最適化分析の全結果です:\n\n")
-                debug_content = llm_response if llm_response else optimized_result
-                f.write(f"/*\n{debug_content}\n*/")
+                f.write(f"/*\n{optimized_result_main_content}\n*/")
     except Exception as e:
         print(f"⚠️ SQLファイル保存中にエラーが発生しました: {str(e)}")
         # エラー時は基本的なファイルを生成
         with open(optimized_filename, 'w', encoding='utf-8') as f:
             f.write(f"-- ⚠️ SQLファイル保存中にエラーが発生しました: {str(e)}\n")
-            error_content = llm_response if llm_response else optimized_result
-            f.write(f"-- 最適化結果:\n{error_content}\n")
+            f.write(f"-- 最適化結果:\n{optimized_result_main_content}\n")
     
     # 分析レポートファイルの保存（LLMで推敲された読みやすいレポート）
     report_filename = f"output_optimization_report_{timestamp}.md"
     
     print("🤖 LLMによるレポート推敲を実行中...")
     
-    # 初期レポートの生成（レポート用データを使用）
-    report_data = llm_response if llm_response else optimized_result
+    # 初期レポートの生成
     initial_report = generate_comprehensive_optimization_report(
-        query_id, report_data, metrics, analysis_result
+        query_id, optimized_result_for_file, metrics, analysis_result
     )
     
     # LLMでレポートを推敲（詳細な技術情報を保持）
@@ -8334,13 +8292,13 @@ else:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 🚀 統合SQL最適化処理（メイン処理）
+# MAGIC ## 🔍 EXPLAIN文実行とファイル出力
 # MAGIC
-# MAGIC このセルでは以下の統合処理を実行します：
-# MAGIC - **ステップ1**: オリジナルクエリのEXPLAIN実行（Photon対応状況分析）
-# MAGIC - **ステップ2**: LLMによるSQL最適化 + 最適化クエリの検証EXPLAIN（最大3回自動エラー修正）
-# MAGIC - **ステップ3**: 最適化結果の保存とファイル出力
-# MAGIC - **エラーハンドリング**: AMBIGUOUS_REFERENCE等の自動修正機能
+# MAGIC このセルでは以下の処理を実行します：
+# MAGIC - セル43で抽出したオリジナルクエリを取得
+# MAGIC - EXPLAIN文を生成してDatabricksで実行
+# MAGIC - 実行プランの詳細をファイルに出力
+# MAGIC - エラーハンドリングと結果の確認
 
 # COMMAND ----------
 
@@ -8411,37 +8369,16 @@ def extract_select_from_ctas(query: str) -> str:
     print("📋 通常のクエリ: そのままEXPLAIN文に使用")
     return query
 
-def generate_optimized_query_with_error_feedback(original_query: str, analysis_result: str, metrics: Dict[str, Any], error_info: str = "", previous_optimized_query: str = "") -> str:
+def generate_optimized_query_with_error_feedback(original_query: str, analysis_result: str, metrics: Dict[str, Any], error_info: str = "") -> str:
     """
     エラー情報を含めてLLMによるSQL最適化を実行
     エラー修正に特化したプロンプトを使用
     """
     
-    # 初回最適化クエリの情報を含める
-    previous_query_section = ""
-    if previous_optimized_query:
-        previous_query_section = f"""
-【🚀 初回生成された最適化クエリ（エラー発生）】
-```sql
-{previous_optimized_query}
-```
-
-**⚠️ 重要**: 上記の最適化クエリに含まれる以下の要素は必ず保持してください：
-- **BROADCASTヒント**: `/*+ BROADCAST(table_name) */`
-- **REPARTITIONヒント**: `/*+ REPARTITION(数値, カラム名) */`
-- **その他の最適化ヒント**: COALESCE、CACHE等
-- **最適化手法**: CTE構造、結合順序、フィルタープッシュダウン等
-- **パフォーマンス改善策**: スピル対策、並列度改善等
-
-**🎯 エラー修正の方針**: 
-- エラー箇所のみを修正し、最適化要素は全て保持
-- ヒント句の配置ルールは厳守（BROADCASTはメインクエリSELECT直後等）
-"""
-
     error_feedback_prompt = f"""
 あなたはDatabricksのSQLパフォーマンス最適化とエラー修正の専門家です。
 
-以下の最適化クエリでEXPLAIN実行時にエラーが発生しました。**最適化要素を保持しながら**エラー情報を基に修正してください。
+以下の最適化クエリでEXPLAIN実行時にエラーが発生しました。エラー情報を基に修正してください。
 
 【🚨 発生したエラー情報】
 {error_info}
@@ -8450,37 +8387,17 @@ def generate_optimized_query_with_error_feedback(original_query: str, analysis_r
 ```sql
 {original_query}
 ```
-{previous_query_section}
+
 【詳細なボトルネック分析結果】
 {analysis_result}
 
 【🔧 エラー修正の重要な指針】
-1. **🚀 最適化要素の絶対保持（最重要）**:
-   - **初回生成されたBROADCASTヒントを必ず保持**: `/*+ BROADCAST(table_name) */`
-   - **初回生成されたREPARTITIONヒントを必ず保持**: `/*+ REPARTITION(数値, カラム) */`
-   - **その他の最適化ヒントも全て保持**: COALESCE、CACHE等
-   - **CTE構造や結合順序などの最適化設計を維持**
-   - **スピル対策やパフォーマンス改善策を保持**
-
-2. **🚨 AMBIGUOUS_REFERENCE エラーの最優先修正**: 
-   - **全てのカラム参照でテーブル名またはエイリアス名を明示的に指定**
-   - 例: `ss_item_sk` → `store_sales.ss_item_sk` または `ss.ss_item_sk`
-   - **JOINの条件でも必ずテーブル名/エイリアスを明示**
-   - 例: `ss_item_sk = i_item_sk` → `ss.ss_item_sk = i.i_item_sk`
-   - **SELECT句でも全てのカラムにテーブル名/エイリアスを付与**
-   - **GROUP BY、ORDER BY、WHERE句でも同様に明示**
-   - **サブクエリとメインクエリで同名カラムがある場合は特に注意**
-
-3. **テーブルエイリアスの一貫使用**: 
-   - 全てのテーブルに短いエイリアス名を付与（例: store_sales → ss, item → i）
-   - クエリ全体で一貫してエイリアス名を使用
-   - サブクエリ内でも同じエイリアス名体系を維持
-
-4. **構文エラーの修正**: SQL構文の文法エラーを修正
-5. **テーブル・カラム名の確認**: 存在しないテーブルやカラムの修正
-6. **型変換エラーの修正**: 不適切な型変換やキャストの修正
-7. **ヒント句の修正**: 不正なヒント構文の修正（位置は保持）
-8. **権限エラーの回避**: アクセス権限のないテーブルの代替策
+1. **構文エラーの修正**: SQL構文の文法エラーを最優先で修正
+2. **テーブル・カラム名の確認**: 存在しないテーブルやカラムの修正
+3. **型変換エラーの修正**: 不適切な型変換やキャストの修正
+4. **ヒント句の修正**: 不正なヒント構文の修正
+5. **権限エラーの回避**: アクセス権限のないテーブルの代替策
+6. **最適化レベルの調整**: 複雑すぎる最適化の簡素化
 
 【🚨 BROADCASTヒント配置の厳格なルール - エラー修正版】
 - **必ずメインクエリの最初のSELECT文の直後のみ**に配置
@@ -8499,27 +8416,20 @@ def generate_optimized_query_with_error_feedback(original_query: str, analysis_r
 - プレースホルダー（...、[省略]）は一切使用禁止
 - 元のクエリのDISTINCT句は必ず保持
 - 実際に実行できる完全なSQLクエリのみを出力
-- **🚨 AMBIGUOUS_REFERENCEエラー完全防止**: 全てのカラム参照でテーブル名/エイリアス必須
-- **テーブルエイリアス一貫使用**: 全クエリ内で統一されたエイリアス名体系を維持
-- **🚀 最適化要素の絶対保持**: 初回生成されたヒント句と最適化手法を必ず維持
 
 【出力形式】
 ## 🔧 エラー修正済み最適化SQL
 
 **修正した内容**:
 - [具体的なエラー修正箇所]
-
-**保持した最適化要素**:
-- [保持されたBROADCASTヒント]
-- [保持されたREPARTITIONヒント]
-- [保持されたその他の最適化手法]
+- [適用した最適化手法]
 
 ```sql
-[完全なSQL - エラー修正済み、最適化要素保持]
+[完全なSQL - エラー修正済み]
 ```
 
 ## 修正詳細
-[エラーの原因と修正方法、および最適化要素保持の説明]
+[エラーの原因と修正方法の詳細説明]
 """
 
     # 設定されたLLMプロバイダーを使用
@@ -8543,11 +8453,10 @@ def generate_optimized_query_with_error_feedback(original_query: str, analysis_r
         return f"⚠️ エラー修正SQL生成中にエラーが発生しました: {str(e)}"
 
 
-def execute_explain_with_retry_logic(original_query: str, analysis_result: str, metrics: Dict[str, Any], max_retries: int = 3) -> Dict[str, Any]:
+def execute_explain_with_retry_logic(original_query: str, analysis_result: str, metrics: Dict[str, Any], max_retries: int = 2) -> Dict[str, Any]:
     """
-    EXPLAIN実行とエラー修正の再試行ロジック（最適化クエリの検証用）
-    最大3回まで自動修正を試行し、失敗時は元クエリを使用
-    注意: これはオリジナルクエリ用ではなく、最適化クエリの検証用です
+    EXPLAIN実行とエラー修正の再試行ロジック
+    最大2回まで自動修正を試行し、失敗時は元クエリを使用
     """
     from datetime import datetime
     
@@ -8624,11 +8533,10 @@ def execute_explain_with_retry_logic(original_query: str, analysis_result: str, 
                 
                 # フォールバック: 元クエリでのファイル生成
                 fallback_result = save_optimized_sql_files(
-                    original_query,
-                    original_query,  # 成功したクエリ（元クエリ）
+                    original_query, 
+                    f"# 🚨 最適化クエリのEXPLAIN実行が{max_retries}回とも失敗したため、元クエリを使用\n\n## 最後のエラー情報\n{error_message}\n\n## 元のクエリ\n```sql\n{original_query}\n```",
                     metrics,
-                    analysis_result,
-                    f"# 🚨 最適化クエリのEXPLAIN実行が{max_retries}回とも失敗したため、元クエリを使用\n\n## 最後のエラー情報\n{error_message}\n\n## 元のクエリ\n```sql\n{original_query}\n```"  # LLMレスポンス用説明
+                    analysis_result
                 )
                 
                 # 失敗時のログ記録
@@ -8677,13 +8585,12 @@ def execute_explain_with_retry_logic(original_query: str, analysis_result: str, 
             retry_count += 1
             print(f"🔧 試行 {retry_count + 1} に向けてエラー修正中...")
             
-            # エラー情報を含めて再生成（初回最適化クエリも渡す）
+            # エラー情報を含めて再生成
             corrected_query = generate_optimized_query_with_error_feedback(
                 original_query, 
                 analysis_result, 
                 metrics, 
-                error_message,
-                current_query  # 🚀 初回最適化クエリ（ヒント付き）を渡す
+                error_message
             )
             
             # thinking_enabled対応
@@ -8780,81 +8687,6 @@ def execute_explain_and_save_to_file(original_query: str) -> Dict[str, str]:
         # 結果を収集
         explain_result = result.collect()
         
-        # 🚨 重要: EXPLAIN結果の内容をチェックしてエラーメッセージが含まれているかを確認
-        explain_content = ""
-        for row in explain_result:
-            explain_content += str(row[0]) + "\n"
-        
-        # エラーパターンのチェック
-        retryable_error_patterns = [
-            "Error occurred during query planning",
-            "error occurred during query planning", 
-            "Query planning failed",
-            "query planning failed",
-            "Plan optimization failed",
-            "plan optimization failed",
-            "Failed to plan query",
-            "failed to plan query",
-            "Analysis exception",
-            "analysis exception",
-            "AMBIGUOUS_REFERENCE",
-            "ambiguous_reference",
-            "[AMBIGUOUS_REFERENCE]",
-            "Reference",
-            "is ambiguous",
-            "Ambiguous",
-            "ParseException",
-            "SemanticException",
-            "AnalysisException",
-            "Syntax error",
-            "syntax error",
-            "PARSE_SYNTAX_ERROR",
-            "INVALID_IDENTIFIER",
-            "TABLE_OR_VIEW_NOT_FOUND",
-            "COLUMN_NOT_FOUND"
-        ]
-        
-        # EXPLAIN結果にエラーメッセージが含まれているかチェック
-        detected_error = None
-        for pattern in retryable_error_patterns:
-            if pattern in explain_content.lower():
-                detected_error = pattern
-                break
-        
-        if detected_error:
-            # エラーが検出された場合はエラーとして処理
-            print(f"❌ EXPLAIN結果でエラーを検出: {detected_error}")
-            
-            # エラーファイルの保存
-            error_filename = f"output_explain_error_{timestamp}.txt"
-            with open(error_filename, 'w', encoding='utf-8') as f:
-                f.write(f"# EXPLAIN実行エラー\n")
-                f.write(f"実行日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                f.write(f"検出エラーパターン: {detected_error}\n")
-                f.write(f"オリジナルクエリ文字数: {len(original_query):,}\n")
-                f.write("\n" + "=" * 80 + "\n")
-                f.write("EXPLAIN エラー結果:\n")
-                f.write("=" * 80 + "\n\n")
-                f.write(explain_content)
-            
-            # 結果のプレビュー表示（エラー用）
-            print("\n📋 EXPLAIN結果のプレビュー:")
-            print("-" * 50)
-            preview_lines = min(10, len(explain_result))
-            for i, row in enumerate(explain_result[:preview_lines]):
-                print(f"{i+1:2d}: {str(row[0])[:100]}...")
-            
-            if len(explain_result) > preview_lines:
-                print(f"... (残り {len(explain_result) - preview_lines} 行は {error_filename} を参照)")
-            print("-" * 50)
-            
-            return {
-                'error_file': error_filename,
-                'error_message': explain_content.strip(),
-                'detected_pattern': detected_error
-            }
-        
-        # エラーが検出されなかった場合は成功として処理
         # 結果をファイルに保存
         with open(explain_filename, 'w', encoding='utf-8') as f:
             f.write(f"# EXPLAIN実行結果\n")
@@ -8863,7 +8695,9 @@ def execute_explain_and_save_to_file(original_query: str) -> Dict[str, str]:
             f.write("\n" + "=" * 80 + "\n")
             f.write("EXPLAIN結果:\n")
             f.write("=" * 80 + "\n\n")
-            f.write(explain_content)
+            
+            for row in explain_result:
+                f.write(str(row[0]) + "\n")
         
         print(f"✅ EXPLAIN結果を保存: {explain_filename}")
         print(f"📊 実行プラン行数: {len(explain_result):,}")
@@ -9060,87 +8894,44 @@ elif original_query_for_explain and original_query_for_explain.strip():
             else:
                 analysis_result_str = str(current_analysis_result)
             
-            # 🚀 ステップ1: オリジナルクエリのEXPLAIN実行（最適化前）
-            print("\n📋 ステップ1: オリジナルクエリのEXPLAIN実行")
-            print("-" * 50)
-            print("💡 最適化前の実行プランを分析してPhoton対応状況を確認")
-            
-            original_explain_result = execute_explain_and_save_to_file(original_query_for_explain)
-            
-            if 'explain_file' in original_explain_result:
-                print(f"✅ オリジナルクエリのEXPLAIN実行完了")
-                print(f"   📄 ファイル: {original_explain_result['explain_file']}")
-                print(f"   📊 プラン行数: {original_explain_result.get('plan_lines', 0):,}")
-                
-                # Photon Explanationの詳細確認
-                explain_file = original_explain_result['explain_file']
-                try:
-                    with open(explain_file, 'r', encoding='utf-8') as f:
-                        explain_content = f.read()
-                    
-                    if "== Photon Explanation ==" in explain_content:
-                        print("   🚀 Photon Explanation情報を確認済み")
-                    else:
-                        print("   ⚠️ Photon Explanation情報が見つかりません")
-                        
-                except Exception as e:
-                    print(f"   ⚠️ EXPLAIN結果の確認に失敗: {str(e)}")
-                    
-            elif 'error_file' in original_explain_result:
-                print(f"❌ オリジナルクエリのEXPLAIN実行でエラー発生")
-                print(f"   📄 エラーファイル: {original_explain_result['error_file']}")
-                print(f"   💡 最適化処理は継続しますが、Photon分析情報が不完全になる可能性があります")
-            
-            # 🚀 ステップ2: 新しい統合処理（オリジナルEXPLAIN結果を活用）
-            print("\n📋 ステップ2: LLM最適化 & 検証EXPLAIN実行")
-            print("-" * 50)
-            max_retries_setting = globals().get('MAX_RETRIES', 3)
-            retry_result = execute_explain_with_retry_logic(
-               original_query_for_explain, 
-               analysis_result_str, 
-               current_metrics, 
-               max_retries=max_retries_setting
-            )
+                         # 🚀 新しい統合処理: 設定可能な最大試行回数での自動エラー修正
+             max_retries_setting = globals().get('MAX_RETRIES', 2)
+             retry_result = execute_explain_with_retry_logic(
+                 original_query_for_explain, 
+                 analysis_result_str, 
+                 current_metrics, 
+                 max_retries=max_retries_setting
+             )
             
             # 結果の表示
-            print(f"\n📊 統合処理の最終結果")
-            print("=" * 50)
-            print(f"📋 ステップ1（オリジナルEXPLAIN）: {'✅ 成功' if 'explain_file' in original_explain_result else '❌ エラー'}")
-            print(f"📋 ステップ2（最適化+検証）: {retry_result['final_status']}")
-            print(f"🔄 最適化クエリの検証試行回数: {retry_result['total_attempts']}")
+            print(f"\n📊 最終結果: {retry_result['final_status']}")
+            print(f"🔄 総試行回数: {retry_result['total_attempts']}")
             
             if retry_result['final_status'] == 'success':
-                print("✅ 統合処理が成功しました！")
+                print("✅ 最適化クエリのEXPLAIN実行に成功しました！")
                 
-                # 全EXPLAIN結果の表示
-                print("\n📁 生成されたEXPLAINファイル:")
-                # オリジナルクエリのEXPLAIN結果
-                if 'explain_file' in original_explain_result:
-                    print(f"   📄 オリジナルクエリEXPLAIN: {original_explain_result['explain_file']}")
-                    print(f"   📊 オリジナル実行プラン行数: {original_explain_result.get('plan_lines', 0):,}")
-                
-                # 最適化クエリのEXPLAIN結果
+                # 成功時のファイル情報表示
                 explain_result = retry_result.get('explain_result', {})
                 if explain_result:
+                    print("\n📁 生成されたファイル:")
                     if 'explain_file' in explain_result:
-                        print(f"   📄 最適化クエリEXPLAIN: {explain_result['explain_file']}")
+                        print(f"   📄 EXPLAIN結果: {explain_result['explain_file']}")
                     if 'plan_lines' in explain_result:
-                        print(f"   📊 最適化実行プラン行数: {explain_result['plan_lines']:,}")
+                        print(f"   📊 実行プラン行数: {explain_result['plan_lines']:,}")
                 
                 # 最適化されたクエリの保存
                 optimized_result = retry_result.get('optimized_result', '')
                 final_query = retry_result.get('final_query', original_query_for_explain)
                 
-                # ファイル保存（final_queryを使用して成功したクエリを保存）
+                # ファイル保存
                 saved_files = save_optimized_sql_files(
                     original_query_for_explain,
-                    final_query,  # 成功したクエリを使用
+                    optimized_result,
                     current_metrics,
-                    analysis_result_str,
-                    optimized_result  # レポート用の元LLMレスポンス
+                    analysis_result_str
                 )
                 
-                print("\n📁 最適化レポート・SQLファイル:")
+                print("\n📁 最適化ファイル:")
                 for file_type, filename in saved_files.items():
                     print(f"   📄 {file_type}: {filename}")
                     
@@ -9283,60 +9074,56 @@ print()
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 💾 最適化結果の保存（統合処理用）
+# MAGIC ## 💾 最適化結果の保存 - コメントアウト
 # MAGIC
 # MAGIC このセルでは以下の処理を実行します：
 # MAGIC - 最適化されたSQLクエリのファイル保存（接頭語: output_）
 # MAGIC - オリジナルクエリ、最適化クエリ、レポートの生成
 # MAGIC - 生成ファイルの詳細情報表示
 # MAGIC
-# MAGIC **注意: 新しい統合処理と連携して動作します**
+# MAGIC **注意: 現在はコメントアウトされています。新しい統合処理を使用してください。**
 
 # COMMAND ----------
 
-# 💾 最適化結果の保存（統合処理で生成されたファイルの追加処理）
-print("\n💾 最適化結果の追加保存処理")
-print("-" * 40)
+# 💾 ステップ3: 最適化結果の保存 - コメントアウト
+# print("\n💾 ステップ3: 最適化結果の保存")
+# print("-" * 40)
 
-# 統合処理で既にファイルが生成されているかチェック
-import glob
-import os
+# # 必要な変数が定義されているかチェックし、デフォルト値を設定
+# missing_variables = []
 
-# 統合処理で生成されたファイルを確認
-optimization_files = glob.glob("output_optimized_sql_*.sql")
-report_files = glob.glob("output_optimization_report_*.md")
-explain_files = glob.glob("output_explain_plan_*.txt")
+# # original_query のチェック
+# try:
+#     original_query
+# except NameError:
+#     missing_variables.append("original_query")
+#     original_query = ""
 
-print("📁 統合処理で生成されたファイル:")
-if optimization_files:
-    latest_opt_file = max(optimization_files, key=os.path.getctime)
-    print(f"   📄 最適化SQL: {latest_opt_file}")
-else:
-    print("   ⚠️ 最適化SQLファイルが見つかりません")
+# # optimized_result のチェック  
+# try:
+#     optimized_result
+# except NameError:
+#     missing_variables.append("optimized_result (セル20を実行してください)")
+#     optimized_result = ""
 
-if report_files:
-    latest_report_file = max(report_files, key=os.path.getctime)
-    print(f"   📄 最適化レポート: {latest_report_file}")
-else:
-    print("   ⚠️ 最適化レポートファイルが見つかりません")
+# # extracted_metrics のチェック
+# try:
+#     extracted_metrics
+# except NameError:
+#     missing_variables.append("extracted_metrics (セル12を実行してください)")
+#     # デフォルト値として最小限の構造を設定
+#     extracted_metrics = {
+#         'query_info': {'query_id': 'unknown'},
+#         'overall_metrics': {},
+#         'bottleneck_indicators': {}
+#     }
 
-if explain_files:
-    latest_explain_file = max(explain_files, key=os.path.getctime)
-    print(f"   📄 EXPLAIN結果: {latest_explain_file}")
-else:
-    print("   ⚠️ EXPLAIN結果ファイルが見つかりません")
-
-# ファイルサイズの確認
-print(f"\n📊 生成ファイルの詳細:")
-all_files = optimization_files + report_files + explain_files
-for filename in sorted(all_files, key=os.path.getctime, reverse=True)[:5]:  # 最新5ファイル
-    if os.path.exists(filename):
-        file_size = os.path.getsize(filename)
-        print(f"   {filename}: {file_size:,} bytes")
-
-if not all_files:
-    print("   ⚠️ 統合処理でファイルが生成されていません")
-    print("   📋 統合処理（セル44）を先に実行してください")
+# # analysis_result のチェック
+# try:
+#     analysis_result
+# except NameError:
+#     missing_variables.append("analysis_result")
+#     analysis_result = ""
 
 # if missing_variables:
 #     print("❌ 必要な変数が定義されていません:")
@@ -9386,246 +9173,247 @@ if not all_files:
 #     print("⚠️ クエリまたは最適化結果が不完全なため、ファイル保存をスキップしました")
 #     saved_files = {}
 
+# 
 
 # COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 📝 レポート推敲処理（統合処理用）
-# MAGIC
-# MAGIC このセルでは以下の処理を実行します：
-# MAGIC - 統合処理で生成されたレポートファイルの読み込み
-# MAGIC - LLMによるレポートの推敲（読みやすく、簡潔に）
-# MAGIC - 推敲されたレポートファイルの生成
-# MAGIC
-# MAGIC **注意: 新しい統合処理と連携して動作します**
-
-# COMMAND ----------
-
-# 📝 レポート推敲処理（統合処理用）
-print("\n📝 レポート推敲処理")
-print("-" * 40)
-
-def find_latest_report_file() -> str:
-    """最新のレポートファイルを見つける"""
-    import os
-    import glob
-    
-    # 現在のディレクトリでレポートファイルを検索
-    pattern = "output_optimization_report_*.md"
-    report_files = glob.glob(pattern)
-    
-    if not report_files:
-        return None
-    
-    # 最新のファイルを取得（タイムスタンプ順）
-    latest_file = max(report_files, key=os.path.getctime)
-    return latest_file
-
-def refine_report_content_with_llm(report_content: str) -> str:
-    """LLMを使ってレポートを推敲する"""
-    
-    # LLMプロバイダーの設定確認
-    if not LLM_CONFIG or not LLM_CONFIG.get('provider'):
-        print("❌ LLMプロバイダーが設定されていません")
-        return report_content
-    
-    # Photon利用率の抽出と評価判定
-    import re
-    photon_pattern = r'利用率[：:]\s*(\d+(?:\.\d+)?)%'
-    photon_match = re.search(photon_pattern, report_content)
-    
-    photon_evaluation_instruction = ""
-    if photon_match:
-        photon_utilization = float(photon_match.group(1))
-        if photon_utilization <= 80:
-            photon_evaluation_instruction = """
-【Photon利用率評価指示】
-- Photon利用率が80%以下の場合は「要改善」または「不良」の評価を明確に表示してください
-- 80%以下の場合は、改善の必要性を強調し、具体的な改善アクションを提示してください
-- 評価例: 「Photon利用率: XX% (評価: 要改善)」
-"""
-        else:
-            photon_evaluation_instruction = """
-【Photon利用率評価指示】
-- Photon利用率が80%以上の場合は「良好」の評価を表示してください
-- 評価例: 「Photon利用率: XX% (評価: 良好)」
-"""
-    
-    refinement_prompt = f"""あなたは技術文書の編集者です。以下のDatabricks SQLパフォーマンス分析レポートを、読みやすく簡潔に推敲してください。
-
-【推敲の要件】
-1. 全体的な構成を整理し、情報を論理的に配置する
-2. 冗長な表現を削除し、簡潔で分かりやすい表現に修正する
-3. 重要な情報が埋もれないよう、適切な見出しレベルで構造化する
-4. 専門用語は残しつつ、分かりやすい説明を追加する
-5. 数値データやメトリクスは保持する
-6. 実用的な推奨事項を明確に提示する
-
-【🚨 絶対に削除・変更してはいけない重要情報】
-- **現在のクラスタリングキー情報**: 「現在のクラスタリングキー: XX」または「設定なし」表示
-- **フィルタ率情報**: 「フィルタ率: X.X% (読み込み: XX.XXGB, プルーン: XX.XXGB)」形式
-- **パーセンテージ計算**: 各処理の「全体の○○%」表示（並列実行を考慮した正確な計算結果）
-- **推奨vs現在の比較分析**: 推奨クラスタリングキーと現在のキーの対比情報
-- **具体的数値メトリクス**: 実行時間、データ読み込み量、スピル量、利用率等
-- **SQL実装例**: ALTER TABLE構文、CLUSTER BY文、ヒント句等の具体例
-- **テーブル別詳細情報**: 各テーブルのノード情報、フィルタ効率、推奨事項
-
-{photon_evaluation_instruction}
-
-【現在のレポート内容】
-{report_content}
-
-【出力要件】
-- 推敲されたレポートをmarkdown形式で出力
-- 技術情報は維持しつつ、可読性を向上させる
-- 重要なポイントを強調し、アクションプランを明確にする
-- Photon利用率の評価を明確に表示する
-- **必須**: 現在のクラスタリングキー情報とフィルタ率情報を完全に保持
-- **必須**: パーセンテージ計算値は元の正確な数値を使用
-- **必須**: テーブル別の詳細分析情報（現在のキー、推奨キー、フィルタ率）を削除しない
-- **必須**: SQL実装例（ALTER TABLE、CLUSTER BY等）は完全な形で保持
-"""
-    
-    try:
-        # 設定されたLLMプロバイダーに基づいて推敲を実行
-        provider = LLM_CONFIG.get('provider', 'databricks')
-        
-        if provider == 'databricks':
-            refined_content = _call_databricks_llm(refinement_prompt)
-        elif provider == 'openai':
-            refined_content = _call_openai_llm(refinement_prompt)
-        elif provider == 'azure_openai':
-            refined_content = _call_azure_openai_llm(refinement_prompt)
-        elif provider == 'anthropic':
-            refined_content = _call_anthropic_llm(refinement_prompt)
-        else:
-            print(f"❌ 未対応のLLMプロバイダー: {provider}")
-            return report_content
-        
-        # thinking_enabled対応: 結果がリストの場合の処理
-        if isinstance(refined_content, list):
-            refined_content = format_thinking_response(refined_content)
-        
-        return refined_content
-        
-    except Exception as e:
-        print(f"❌ LLMによるレポート推敲中にエラーが発生: {str(e)}")
-        return report_content
-
-def save_refined_report(refined_content: str, original_filename: str) -> str:
-    """推敲されたレポートを保存"""
-    from datetime import datetime
-    
-    # 推敲版のファイル名を生成
-    base_name = original_filename.replace('.md', '')
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    refined_filename = f"{base_name}_refined_{timestamp}.md"
-    
-    try:
-        with open(refined_filename, 'w', encoding='utf-8') as f:
-            f.write(refined_content)
-        
-        print(f"✅ 推敲されたレポートを保存: {refined_filename}")
-        return refined_filename
-        
-    except Exception as e:
-        print(f"❌ 推敲レポートの保存中にエラー: {str(e)}")
-        return None
-
-def finalize_report_files(original_filename: str, refined_filename: str) -> str:
-    """元のファイルを削除し、推敲版ファイルを元のファイル名にリネーム"""
-    import os
-    
-    try:
-        # 元のファイルを削除
-        if os.path.exists(original_filename):
-            os.remove(original_filename)
-            print(f"🗑️ 元のファイルを削除: {original_filename}")
-        
-        # 推敲版ファイルを元のファイル名にリネーム
-        if os.path.exists(refined_filename):
-            os.rename(refined_filename, original_filename)
-            print(f"📝 推敲版ファイルをリネーム: {refined_filename} → {original_filename}")
-            return original_filename
-        else:
-            print(f"❌ 推敲版ファイルが見つかりません: {refined_filename}")
-            return None
-            
-    except Exception as e:
-        print(f"❌ ファイル操作中にエラー: {str(e)}")
-        return None
-
-
-# メイン処理
-try:
-    # 最新のレポートファイルを検索
-    latest_report = find_latest_report_file()
-    
-    if not latest_report:
-        print("❌ レポートファイルが見つかりません")
-        print("⚠️ セル47 (最適化結果の保存) を先に実行してください")
-    else:
-        print(f"📄 対象レポートファイル: {latest_report}")
-        
-        # レポートファイルの内容を読み込み
-        with open(latest_report, 'r', encoding='utf-8') as f:
-            original_content = f.read()
-        
-        print(f"📊 元レポートサイズ: {len(original_content):,} 文字")
-        
-        # LLMによる推敲を実行
-        print("🤖 LLMによる推敲を実行中...")
-        refined_content = refine_report_content_with_llm(original_content)
-        
-        if refined_content != original_content:
-            print(f"📊 推敲後サイズ: {len(refined_content):,} 文字")
-            
-            # 推敲されたレポートを保存
-            refined_filename = save_refined_report(refined_content, latest_report)
-            
-            if refined_filename:
-                print(f"📄 推敲版レポート: {refined_filename}")
-                
-                # ファイルサイズの確認
-                import os
-                if os.path.exists(refined_filename):
-                    file_size = os.path.getsize(refined_filename)
-                    print(f"📁 推敲版ファイルサイズ: {file_size:,} bytes")
-                
-                # 元のファイルを削除し、推敲版ファイルを元のファイル名にリネーム
-                final_filename = finalize_report_files(latest_report, refined_filename)
-                
-                if final_filename:
-                    print(f"📄 最終レポートファイル: {final_filename}")
-                    
-                    # 最終ファイルサイズの確認
-                    if os.path.exists(final_filename):
-                        final_file_size = os.path.getsize(final_filename)
-                        print(f"📁 最終ファイルサイズ: {final_file_size:,} bytes")
-                
-                print("✅ レポート推敲処理が完了しました")
-                
-                # 推敲の結果を表示（最初の1000文字）
-                print("\n📋 推敲結果のプレビュー:")
-                print("-" * 50)
-                preview = refined_content[:1000]
-                print(preview)
-                if len(refined_content) > 1000:
-                    print(f"\n... (残り {len(refined_content) - 1000} 文字は {final_filename or latest_report} を参照)")
-                print("-" * 50)
-            else:
-                print("❌ 推敲レポートの保存に失敗しました")
-        else:
-            print("⚠️ 推敲による変更はありませんでした")
-            
-except Exception as e:
-    print(f"❌ レポート推敲処理中にエラーが発生: {str(e)}")
-    import traceback
-    traceback.print_exc()
-
+# 
+# # MAGIC %md
+# # MAGIC ## 📝 レポート推敲処理 - コメントアウト
+# # MAGIC
+# # MAGIC このセルでは以下の処理を実行します：
+# # MAGIC - セル47で出力されたレポートファイルの読み込み
+# # MAGIC - LLMによるレポートの推敲（読みやすく、簡潔に）
+# # MAGIC - 推敲されたレポートファイルの生成
+# # MAGIC
+# # MAGIC **注意: 現在はコメントアウトされています。新しい統合処理を使用してください。**
+# 
+# # COMMAND ----------
+# 
+# # 📝 レポート推敲処理 - コメントアウト
+# # print("\n📝 レポート推敲処理")
+# # print("-" * 40)
+# 
+# def find_latest_report_file() -> str:
+#     """最新のレポートファイルを見つける"""
+#     import os
+#     import glob
+#     
+#     # 現在のディレクトリでレポートファイルを検索
+#     pattern = "output_optimization_report_*.md"
+#     report_files = glob.glob(pattern)
+#     
+#     if not report_files:
+#         return None
+#     
+#     # 最新のファイルを取得（タイムスタンプ順）
+#     latest_file = max(report_files, key=os.path.getctime)
+#     return latest_file
+# 
+# def refine_report_content_with_llm(report_content: str) -> str:
+#     """LLMを使ってレポートを推敲する"""
+#     
+#     # LLMプロバイダーの設定確認
+#     if not LLM_CONFIG or not LLM_CONFIG.get('provider'):
+#         print("❌ LLMプロバイダーが設定されていません")
+#         return report_content
+#     
+#     # Photon利用率の抽出と評価判定
+#     import re
+#     photon_pattern = r'利用率[：:]\s*(\d+(?:\.\d+)?)%'
+#     photon_match = re.search(photon_pattern, report_content)
+#     
+#     photon_evaluation_instruction = ""
+#     if photon_match:
+#         photon_utilization = float(photon_match.group(1))
+#         if photon_utilization <= 80:
+#             photon_evaluation_instruction = """
+# 【Photon利用率評価指示】
+# - Photon利用率が80%以下の場合は「要改善」または「不良」の評価を明確に表示してください
+# - 80%以下の場合は、改善の必要性を強調し、具体的な改善アクションを提示してください
+# - 評価例: 「Photon利用率: XX% (評価: 要改善)」
+# """
+#         else:
+#             photon_evaluation_instruction = """
+# 【Photon利用率評価指示】
+# - Photon利用率が80%以上の場合は「良好」の評価を表示してください
+# - 評価例: 「Photon利用率: XX% (評価: 良好)」
+# """
+#     
+#     refinement_prompt = f"""あなたは技術文書の編集者です。以下のDatabricks SQLパフォーマンス分析レポートを、読みやすく簡潔に推敲してください。
+# 
+# 【推敲の要件】
+# 1. 全体的な構成を整理し、情報を論理的に配置する
+# 2. 冗長な表現を削除し、簡潔で分かりやすい表現に修正する
+# 3. 重要な情報が埋もれないよう、適切な見出しレベルで構造化する
+# 4. 専門用語は残しつつ、分かりやすい説明を追加する
+# 5. 数値データやメトリクスは保持する
+# 6. 実用的な推奨事項を明確に提示する
+# 
+# 【🚨 絶対に削除・変更してはいけない重要情報】
+# - **現在のクラスタリングキー情報**: 「現在のクラスタリングキー: XX」または「設定なし」表示
+# - **フィルタ率情報**: 「フィルタ率: X.X% (読み込み: XX.XXGB, プルーン: XX.XXGB)」形式
+# - **パーセンテージ計算**: 各処理の「全体の○○%」表示（並列実行を考慮した正確な計算結果）
+# - **推奨vs現在の比較分析**: 推奨クラスタリングキーと現在のキーの対比情報
+# - **具体的数値メトリクス**: 実行時間、データ読み込み量、スピル量、利用率等
+# - **SQL実装例**: ALTER TABLE構文、CLUSTER BY文、ヒント句等の具体例
+# - **テーブル別詳細情報**: 各テーブルのノード情報、フィルタ効率、推奨事項
+# 
+# {photon_evaluation_instruction}
+# 
+# 【現在のレポート内容】
+# {report_content}
+# 
+# 【出力要件】
+# - 推敲されたレポートをmarkdown形式で出力
+# - 技術情報は維持しつつ、可読性を向上させる
+# - 重要なポイントを強調し、アクションプランを明確にする
+# - Photon利用率の評価を明確に表示する
+# - **必須**: 現在のクラスタリングキー情報とフィルタ率情報を完全に保持
+# - **必須**: パーセンテージ計算値は元の正確な数値を使用
+# - **必須**: テーブル別の詳細分析情報（現在のキー、推奨キー、フィルタ率）を削除しない
+# - **必須**: SQL実装例（ALTER TABLE、CLUSTER BY等）は完全な形で保持
+# """
+#     
+#     try:
+#         # 設定されたLLMプロバイダーに基づいて推敲を実行
+#         provider = LLM_CONFIG.get('provider', 'databricks')
+#         
+#         if provider == 'databricks':
+#             refined_content = _call_databricks_llm(refinement_prompt)
+#         elif provider == 'openai':
+#             refined_content = _call_openai_llm(refinement_prompt)
+#         elif provider == 'azure_openai':
+#             refined_content = _call_azure_openai_llm(refinement_prompt)
+#         elif provider == 'anthropic':
+#             refined_content = _call_anthropic_llm(refinement_prompt)
+#         else:
+#             print(f"❌ 未対応のLLMプロバイダー: {provider}")
+#             return report_content
+#         
+#         # thinking_enabled対応: 結果がリストの場合の処理
+#         if isinstance(refined_content, list):
+#             refined_content = format_thinking_response(refined_content)
+#         
+#         return refined_content
+#         
+#     except Exception as e:
+#         print(f"❌ LLMによるレポート推敲中にエラーが発生: {str(e)}")
+#         return report_content
+# 
+# def save_refined_report(refined_content: str, original_filename: str) -> str:
+#     """推敲されたレポートを保存"""
+#     from datetime import datetime
+#     
+#     # 推敲版のファイル名を生成
+#     base_name = original_filename.replace('.md', '')
+#     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+#     refined_filename = f"{base_name}_refined_{timestamp}.md"
+#     
+#     try:
+#         with open(refined_filename, 'w', encoding='utf-8') as f:
+#             f.write(refined_content)
+#         
+#         print(f"✅ 推敲されたレポートを保存: {refined_filename}")
+#         return refined_filename
+#         
+#     except Exception as e:
+#         print(f"❌ 推敲レポートの保存中にエラー: {str(e)}")
+#         return None
+# 
+# def finalize_report_files(original_filename: str, refined_filename: str) -> str:
+#     """元のファイルを削除し、推敲版ファイルを元のファイル名にリネーム"""
+#     import os
+#     
+#     try:
+#         # 元のファイルを削除
+#         if os.path.exists(original_filename):
+#             os.remove(original_filename)
+#             print(f"🗑️ 元のファイルを削除: {original_filename}")
+#         
+#         # 推敲版ファイルを元のファイル名にリネーム
+#         if os.path.exists(refined_filename):
+#             os.rename(refined_filename, original_filename)
+#             print(f"📝 推敲版ファイルをリネーム: {refined_filename} → {original_filename}")
+#             return original_filename
+#         else:
+#             print(f"❌ 推敲版ファイルが見つかりません: {refined_filename}")
+#             return None
+#             
+#     except Exception as e:
+#         print(f"❌ ファイル操作中にエラー: {str(e)}")
+#         return None
+# 
+# 
+# # メイン処理
+# try:
+#     # 最新のレポートファイルを検索
+#     latest_report = find_latest_report_file()
+#     
+#     if not latest_report:
+#         print("❌ レポートファイルが見つかりません")
+#         print("⚠️ セル47 (最適化結果の保存) を先に実行してください")
+#     else:
+#         print(f"📄 対象レポートファイル: {latest_report}")
+#         
+#         # レポートファイルの内容を読み込み
+#         with open(latest_report, 'r', encoding='utf-8') as f:
+#             original_content = f.read()
+#         
+#         print(f"📊 元レポートサイズ: {len(original_content):,} 文字")
+#         
+#         # LLMによる推敲を実行
+#         print("🤖 LLMによる推敲を実行中...")
+#         refined_content = refine_report_content_with_llm(original_content)
+#         
+#         if refined_content != original_content:
+#             print(f"📊 推敲後サイズ: {len(refined_content):,} 文字")
+#             
+#             # 推敲されたレポートを保存
+#             refined_filename = save_refined_report(refined_content, latest_report)
+#             
+#             if refined_filename:
+#                 print(f"📄 推敲版レポート: {refined_filename}")
+#                 
+#                 # ファイルサイズの確認
+#                 import os
+#                 if os.path.exists(refined_filename):
+#                     file_size = os.path.getsize(refined_filename)
+#                     print(f"📁 推敲版ファイルサイズ: {file_size:,} bytes")
+#                 
+#                 # 元のファイルを削除し、推敲版ファイルを元のファイル名にリネーム
+#                 final_filename = finalize_report_files(latest_report, refined_filename)
+#                 
+#                 if final_filename:
+#                     print(f"📄 最終レポートファイル: {final_filename}")
+#                     
+#                     # 最終ファイルサイズの確認
+#                     if os.path.exists(final_filename):
+#                         final_file_size = os.path.getsize(final_filename)
+#                         print(f"📁 最終ファイルサイズ: {final_file_size:,} bytes")
+#                 
+#                 print("✅ レポート推敲処理が完了しました")
+#                 
+#                 # 推敲の結果を表示（最初の1000文字）
+#                 print("\n📋 推敲結果のプレビュー:")
+#                 print("-" * 50)
+#                 preview = refined_content[:1000]
+#                 print(preview)
+#                 if len(refined_content) > 1000:
+#                     print(f"\n... (残り {len(refined_content) - 1000} 文字は {final_filename or latest_report} を参照)")
+#                 print("-" * 50)
+#             else:
+#                 print("❌ 推敲レポートの保存に失敗しました")
+#         else:
+#             print("⚠️ 推敲による変更はありませんでした")
+#             
+# except Exception as e:
+#     print(f"❌ レポート推敲処理中にエラーが発生: {str(e)}")
+#     import traceback
+#     traceback.print_exc()
+# 
 # print()
-
-# 🧹 中間ファイルの削除処理（DEBUG_ENABLEフラグに基づく）
+# 
+# # 🧹 中間ファイルの削除処理（DEBUG_ENABLEフラグに基づく）
 debug_enabled = globals().get('DEBUG_ENABLE', 'N')
 explain_enabled = globals().get('EXPLAIN_ENABLED', 'N')
 
@@ -9664,8 +9452,9 @@ else:
         
         if explain_files:
             print(f"📁 削除対象のEXPLAIN結果ファイル: {len(explain_files)} 個")
-#             
-#             deleted_count = 0
+            
+            # 🔧 変数の初期化をより安全に実行
+            deleted_count = 0
             for file_path in explain_files:
                 try:
                     os.remove(file_path)
@@ -9682,7 +9471,6 @@ else:
         print("⚠️ EXPLAIN実行が無効化されているため、EXPLAIN結果ファイルの削除処理をスキップしました")
 
 print()
-
 
 print("🎉 すべての処理が完了しました！")
 print("📁 生成されたファイルを確認して、分析結果を活用してください。")
