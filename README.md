@@ -154,6 +154,32 @@ LLM_CONFIG["anthropic"]["api_key"] = "your-api-key"
 - **リトライ機能**: 最大3回の自動修正（設定可能）
 - **ヒント保持**: 修正プロセス中もBROADCAST/REPARTITIONヒントを維持
 - **フォールバック**: 修正失敗時は元クエリで安全に実行
+- **🚨 LLMトークン制限対策**: 大容量データの自動切り詰め機能
+
+### 🚨 LLMトークン制限エラーの解決
+
+#### **発生パターン**
+```
+❌ APIエラー: ステータスコード 400
+レスポンス: {"error_code":"BAD_REQUEST","message":"Input is too long for requested model."}
+```
+
+#### **自動対策機能**
+- **EXPLAIN COST統計**: 50KB制限（約414KB→50KBに自動切り詰め）
+- **Physical Plan**: 30KB制限（約70KB→30KBに自動切り詰め）
+- **エラー検出**: LLMエラーを事前検出してSQL実行を防止
+- **フォールバック**: エラー時は自動的に元クエリを使用
+
+#### **手動対策（必要時）**
+```python
+# LLMトークン制限の調整
+LLM_CONFIG["databricks"]["max_tokens"] = 65536      # 64K制限
+LLM_CONFIG["databricks"]["thinking_budget_tokens"] = 32768  # 32K思考予算
+
+# 大容量データ対策
+DEBUG_ENABLED = 'N'        # 中間ファイルを削減
+EXPLAIN_ENABLED = 'N'      # EXPLAIN実行をスキップ（必要時のみ）
+```
 
 ### ファイル管理
 - **条件付き保存**: `DEBUG_ENABLED`設定による柔軟なファイル管理
@@ -174,7 +200,14 @@ LLM_CONFIG["anthropic"]["api_key"] = "your-api-key"
 - **実行時間**: 28分 → 9分（68%短縮）
 - **適用技術**: Liquid Clustering + 適切なパーティショニング
 
-## 🆕 最新アップデート
+## �� 最新アップデート
+
+### v2.5.1 - 🚨 緊急修正: LLMトークン制限エラー解決 (NEW)
+- **LLMトークン制限エラーの根本解決**: 414KB超のEXPLAIN COST結果による`Input is too long`エラーを防止
+- **入力データサイズ制限**: EXPLAIN COST統計(50KB)、Physical Plan(30KB)の自動切り詰め機能
+- **エラーメッセージのSQL実行防止**: APIエラーメッセージがSQLクエリとして実行される問題を修正
+- **堅牢なエラーハンドリング**: LLMエラー時の適切なフォールバック機能
+- **詳細なエラー診断**: 明確なエラー原因と解決策の提示
 
 ### v2.5 - EXPLAIN + EXPLAIN COST統合強化
 - **統計ベース最適化**: 実際の統計情報による精密な判定
