@@ -9626,7 +9626,6 @@ def save_refined_report(refined_content: str, original_filename: str) -> str:
 def finalize_report_files(original_filename: str, refined_filename: str) -> str:
     """DEBUG_ENABLED設定に基づいてファイル処理を実行"""
     import os
-    from datetime import datetime
     
     # DEBUG_ENABLED設定を確認
     debug_enabled = globals().get('DEBUG_ENABLED', 'N')
@@ -9635,9 +9634,8 @@ def finalize_report_files(original_filename: str, refined_filename: str) -> str:
         if debug_enabled.upper() == 'Y':
             # DEBUG_ENABLED=Y: 元のファイルを名称変更して保持
             if os.path.exists(original_filename):
-                # バックアップファイル名を生成（元ファイル名に _backup_timestamp を追加）
-                timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-                backup_filename = original_filename.replace('.md', f'_backup_{timestamp}.md')
+                # バックアップファイル名を生成（元ファイル名に _raw を追加）
+                backup_filename = original_filename.replace('.md', '_raw.md')
                 
                 os.rename(original_filename, backup_filename)
                 print(f"📁 元のファイルを保持: {original_filename} → {backup_filename}")
