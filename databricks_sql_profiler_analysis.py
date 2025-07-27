@@ -8173,8 +8173,18 @@ def refine_report_with_llm(raw_report: str, query_id: str) -> str:
     
     print("🤖 LLMによるレポート推敲を実行中...")
     
-    # 修正情報が確実に反映されるよう、推敲処理を有効化
-
+    # 🚨 トークン制限対策: レポートサイズ制限
+    MAX_REPORT_SIZE = 50000  # 50KB制限
+    original_size = len(raw_report)
+    
+    if original_size > MAX_REPORT_SIZE:
+        print(f"⚠️ レポートサイズが大きすぎます: {original_size:,} 文字 → {MAX_REPORT_SIZE:,} 文字に切り詰め")
+        # 重要セクションを優先的に保持
+        truncated_report = raw_report[:MAX_REPORT_SIZE]
+        truncated_report += f"\n\n⚠️ レポートが大きすぎるため、{MAX_REPORT_SIZE:,} 文字に切り詰められました（元サイズ: {original_size:,} 文字）"
+        raw_report = truncated_report
+    else:
+        print(f"📊 レポートサイズ: {original_size:,} 文字（推敲実行）")
     
     refinement_prompt = f"""
 技術文書の編集者として、Databricks SQLパフォーマンス分析レポートを以下のルールに従って推敲してください。
@@ -8248,6 +8258,27 @@ def refine_report_with_llm(raw_report: str, query_id: str) -> str:
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
         
+        # 🚨 LLMエラーレスポンスの検出
+        if isinstance(refined_report, str):
+            error_indicators = [
+                "APIエラー:",
+                "Input is too long",
+                "Bad Request",
+                "❌",
+                "⚠️",
+                "タイムアウトエラー:",
+                "API呼び出しエラー:",
+                "レスポンス:",
+                '{"error_code":'
+            ]
+            
+            is_error_response = any(indicator in refined_report for indicator in error_indicators)
+            
+            if is_error_response:
+                print(f"❌ LLMレポート推敲でエラー検出: {refined_report[:200]}...")
+                print("📄 元のレポートを返します")
+                return raw_report
+        
         # thinking_enabled対応
         if isinstance(refined_report, list):
             refined_report = format_thinking_response(refined_report)
@@ -8257,6 +8288,7 @@ def refine_report_with_llm(raw_report: str, query_id: str) -> str:
         signature_pattern = r"'signature':\s*'[A-Za-z0-9+/=]{100,}'"
         refined_report = re.sub(signature_pattern, "'signature': '[REMOVED]'", refined_report)
         
+        print("✅ LLMによるレポート推敲完了")
         return refined_report
         
     except Exception as e:
@@ -10162,6 +10194,19 @@ def refine_report_content_with_llm(report_content: str) -> str:
         print("❌ LLMプロバイダーが設定されていません")
         return report_content
     
+    # 🚨 トークン制限対策: レポートサイズ制限
+    MAX_CONTENT_SIZE = 50000  # 50KB制限
+    original_size = len(report_content)
+    
+    if original_size > MAX_CONTENT_SIZE:
+        print(f"⚠️ レポートサイズが大きすぎます: {original_size:,} 文字 → {MAX_CONTENT_SIZE:,} 文字に切り詰め")
+        # 重要セクションを優先的に保持
+        truncated_content = report_content[:MAX_CONTENT_SIZE]
+        truncated_content += f"\n\n⚠️ レポートが大きすぎるため、{MAX_CONTENT_SIZE:,} 文字に切り詰められました（元サイズ: {original_size:,} 文字）"
+        report_content = truncated_content
+    else:
+        print(f"📊 レポートサイズ: {original_size:,} 文字（推敲実行）")
+    
     # Photon利用率の抽出と評価判定
     import re
     photon_pattern = r'利用率[：:]\s*(\d+(?:\.\d+)?)%'
@@ -10235,10 +10280,32 @@ def refine_report_content_with_llm(report_content: str) -> str:
             print(f"❌ 未対応のLLMプロバイダー: {provider}")
             return report_content
         
+        # 🚨 LLMエラーレスポンスの検出
+        if isinstance(refined_content, str):
+            error_indicators = [
+                "APIエラー:",
+                "Input is too long",
+                "Bad Request",
+                "❌",
+                "⚠️",
+                "タイムアウトエラー:",
+                "API呼び出しエラー:",
+                "レスポンス:",
+                '{"error_code":'
+            ]
+            
+            is_error_response = any(indicator in refined_content for indicator in error_indicators)
+            
+            if is_error_response:
+                print(f"❌ LLMレポート推敲でエラー検出: {refined_content[:200]}...")
+                print("📄 元のレポートを返します")
+                return report_content
+        
         # thinking_enabled対応: 結果がリストの場合の処理
         if isinstance(refined_content, list):
             refined_content = format_thinking_response(refined_content)
         
+        print("✅ LLMによるレポート推敲完了")
         return refined_content
         
     except Exception as e:
