@@ -5904,7 +5904,7 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
                     explain_content = f.read()
                     print(f"✅ EXPLAIN結果ファイルを読み込み: {latest_explain_file}")
                 
-                # Physical Planの抽出
+                # Physical Planの抽出（サイズ制限適用）
                 if "== Physical Plan ==" in explain_content:
                     physical_plan_start = explain_content.find("== Physical Plan ==")
                     physical_plan_end = explain_content.find("== Photon", physical_plan_start)
@@ -5912,6 +5912,14 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
                         physical_plan_end = len(explain_content)
                     physical_plan = explain_content[physical_plan_start:physical_plan_end].strip()
                     print(f"📊 Physical Plan情報を抽出: {len(physical_plan)} 文字")
+                    
+                    # Physical Planのサイズ制限（LLMトークン制限対策）
+                    MAX_PLAN_SIZE = 30000  # 約30KB制限
+                    if len(physical_plan) > MAX_PLAN_SIZE:
+                        truncated_plan = physical_plan[:MAX_PLAN_SIZE]
+                        truncated_plan += f"\n\n⚠️ Physical Planが大きすぎるため、{MAX_PLAN_SIZE}文字に切り詰められました"
+                        physical_plan = truncated_plan
+                        print(f"⚠️ Physical Planをトークン制限のため{MAX_PLAN_SIZE}文字に切り詰めました")
                 
                 # Photon Explanationの抽出
                 if "== Photon Explanation ==" in explain_content:
@@ -5937,9 +5945,17 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
                     explain_cost_content = f.read()
                     print(f"💰 EXPLAIN COST結果ファイルを読み込み: {latest_cost_file}")
                 
-                # 統計情報の抽出
+                # 統計情報の抽出（サイズ制限適用）
                 cost_statistics = extract_cost_statistics_from_explain_cost(explain_cost_content)
                 print(f"📊 EXPLAIN COST統計情報を抽出: {len(cost_statistics)} 文字")
+                
+                # 統計情報のサイズ制限（LLMトークン制限対策）
+                MAX_STATISTICS_SIZE = 50000  # 約50KB制限
+                if len(cost_statistics) > MAX_STATISTICS_SIZE:
+                    truncated_statistics = cost_statistics[:MAX_STATISTICS_SIZE]
+                    truncated_statistics += f"\n\n⚠️ 統計情報が大きすぎるため、{MAX_STATISTICS_SIZE}文字に切り詰められました"
+                    cost_statistics = truncated_statistics
+                    print(f"⚠️ 統計情報をトークン制限のため{MAX_STATISTICS_SIZE}文字に切り詰めました")
                     
             except Exception as e:
                 print(f"⚠️ EXPLAIN COST結果ファイルの読み込みに失敗: {str(e)}")
@@ -6646,14 +6662,40 @@ FROM cte1 c
         elif provider == "anthropic":
             optimized_result = _call_anthropic_llm(optimization_prompt)
         else:
-            return "⚠️ 設定されたLLMプロバイダーが認識できません"
+            error_msg = "⚠️ 設定されたLLMプロバイダーが認識できません"
+            print(f"❌ LLM最適化エラー: {error_msg}")
+            return f"LLM_ERROR: {error_msg}"
+        
+        # LLMレスポンスのエラーチェック（重要）
+        if isinstance(optimized_result, str):
+            # APIエラーメッセージの検出
+            error_indicators = [
+                 "APIエラー:",
+                 "Input is too long",
+                 "Bad Request",
+                 "❌",
+                 "⚠️",
+                 "タイムアウトエラー:",
+                 "API呼び出しエラー:",
+                 "レスポンス:",
+                 '{"error_code":'
+             ]
+             
+             # エラーメッセージかどうかをチェック
+            is_error_response = any(indicator in optimized_result for indicator in error_indicators)
+            
+            if is_error_response:
+                print(f"❌ LLM API呼び出しでエラーが発生: {optimized_result[:200]}...")
+                return f"LLM_ERROR: {optimized_result}"
         
         # thinking_enabled: Trueの場合にoptimized_resultがリストになることがあるため対応
         # ここでは元のレスポンス形式を保持して返す（後で用途に応じて変換）
         return optimized_result
         
     except Exception as e:
-        return f"⚠️ SQL最適化の生成中にエラーが発生しました: {str(e)}"
+        error_msg = f"⚠️ SQL最適化の生成中にエラーが発生しました: {str(e)}"
+        print(f"❌ LLM最適化例外エラー: {error_msg}")
+        return f"LLM_ERROR: {error_msg}"
 
 
 
@@ -9018,12 +9060,38 @@ def generate_optimized_query_with_error_feedback(original_query: str, analysis_r
         elif provider == "anthropic":
             optimized_result = _call_anthropic_llm(error_feedback_prompt)
         else:
-            return "⚠️ 設定されたLLMプロバイダーが認識できません"
+            error_msg = "⚠️ 設定されたLLMプロバイダーが認識できません"
+            print(f"❌ LLMエラー修正エラー: {error_msg}")
+            return f"LLM_ERROR: {error_msg}"
+        
+        # LLMレスポンスのエラーチェック（重要）
+        if isinstance(optimized_result, str):
+            # APIエラーメッセージの検出
+            error_indicators = [
+                 "APIエラー:",
+                 "Input is too long",
+                 "Bad Request",
+                 "❌",
+                 "⚠️",
+                 "タイムアウトエラー:",
+                 "API呼び出しエラー:",
+                 "レスポンス:",
+                 '{"error_code":'
+             ]
+            
+            # エラーメッセージかどうかをチェック
+            is_error_response = any(indicator in optimized_result for indicator in error_indicators)
+            
+            if is_error_response:
+                print(f"❌ LLM エラー修正API呼び出しでエラーが発生: {optimized_result[:200]}...")
+                return f"LLM_ERROR: {optimized_result}"
         
         return optimized_result
         
     except Exception as e:
-        return f"⚠️ エラー修正SQL生成中にエラーが発生しました: {str(e)}"
+        error_msg = f"⚠️ エラー修正SQL生成中にエラーが発生しました: {str(e)}"
+        print(f"❌ LLMエラー修正例外エラー: {error_msg}")
+        return f"LLM_ERROR: {error_msg}"
 
 
 def execute_explain_with_retry_logic(original_query: str, analysis_result: str, metrics: Dict[str, Any], max_retries: int = 2) -> Dict[str, Any]:
@@ -9039,6 +9107,29 @@ def execute_explain_with_retry_logic(original_query: str, analysis_result: str, 
     # 初回の最適化クエリ生成
     print("🤖 ステップ1: 初回最適化クエリ生成")
     optimized_query = generate_optimized_query_with_llm(original_query, analysis_result, metrics)
+    
+    # LLMエラーチェック（重要）
+    if isinstance(optimized_query, str) and optimized_query.startswith("LLM_ERROR:"):
+        print("❌ LLM最適化でエラーが発生したため、元のクエリを使用します")
+        print(f"🔧 エラー詳細: {optimized_query[10:]}")  # "LLM_ERROR:"を除去
+        
+        # エラー時は元のクエリを使用して即座にファイル生成
+        fallback_result = save_optimized_sql_files(
+            original_query,
+            f"# ❌ LLM最適化でエラーが発生したため、元のクエリを使用\n\n## エラー詳細\n{optimized_query[10:]}\n\n## 元のクエリ\n```sql\n{original_query}\n```",
+            metrics,
+            analysis_result
+        )
+        
+        return {
+            'final_status': 'llm_error',
+            'final_query': original_query,
+            'total_attempts': 0,
+            'all_attempts': [],
+            'explain_result': None,
+            'optimized_result': optimized_query,
+            'error_details': optimized_query[10:]
+        }
     
     # thinking_enabled対応: リスト形式の場合はメインコンテンツを抽出
     if isinstance(optimized_query, list):
@@ -9166,6 +9257,39 @@ def execute_explain_with_retry_logic(original_query: str, analysis_result: str, 
                 error_message,
                 current_query  # 🚀 初回最適化クエリ（ヒント付き）を渡す
             )
+            
+            # LLMエラーチェック（エラー修正時）
+            if isinstance(corrected_query, str) and corrected_query.startswith("LLM_ERROR:"):
+                print("❌ エラー修正でもLLMエラーが発生したため、元のクエリを使用します")
+                print(f"🔧 エラー詳細: {corrected_query[10:]}")  # "LLM_ERROR:"を除去
+                
+                # 失敗記録
+                attempt_record = {
+                    'attempt': retry_count + 1,
+                    'status': 'llm_error_correction_failed',
+                    'query': current_query,
+                    'error_message': f"エラー修正時LLMエラー: {corrected_query[10:]}",
+                    'error_file': None
+                }
+                all_attempts.append(attempt_record)
+                
+                # 元のクエリを使用してファイル生成
+                fallback_result = save_optimized_sql_files(
+                    original_query,
+                    f"# ❌ エラー修正時もLLMエラーが発生したため、元のクエリを使用\n\n## エラー修正時のエラー詳細\n{corrected_query[10:]}\n\n## 元のクエリ\n```sql\n{original_query}\n```",
+                    metrics,
+                    analysis_result
+                )
+                
+                return {
+                    'final_status': 'llm_error_correction_failed',
+                    'final_query': original_query,
+                    'total_attempts': retry_count + 1,
+                    'all_attempts': all_attempts,
+                    'explain_result': None,
+                    'optimized_result': corrected_query,
+                    'error_details': corrected_query[10:]
+                }
             
             # thinking_enabled対応
             if isinstance(corrected_query, list):
@@ -9723,6 +9847,18 @@ elif original_query_for_explain and original_query_for_explain.strip():
                     
             elif retry_result['final_status'] == 'fallback_to_original':
                 print("⚠️ 最適化クエリでエラーが継続したため、元クエリを使用しました")
+            
+            elif retry_result['final_status'] == 'llm_error':
+                print("❌ LLM API呼び出しでエラーが発生したため、元クエリを使用しました")
+                error_details = retry_result.get('error_details', 'Unknown error')
+                print(f"🔧 LLMエラー詳細: {error_details[:200]}...")
+                print("💡 解決策: 入力データサイズを削減するか、LLM設定を調整してください")
+            
+            elif retry_result['final_status'] == 'llm_error_correction_failed':
+                print("❌ エラー修正時にもLLMエラーが発生したため、元クエリを使用しました")
+                error_details = retry_result.get('error_details', 'Unknown error')
+                print(f"🔧 LLMエラー詳細: {error_details[:200]}...")
+                print("💡 解決策: 手動でSQL最適化を実行するか、シンプルなクエリで再試行してください")
                 
                 # フォールバック時のファイル情報表示
                 fallback_files = retry_result.get('fallback_files', {})
