@@ -9624,14 +9624,30 @@ def save_refined_report(refined_content: str, original_filename: str) -> str:
         return None
 # 
 def finalize_report_files(original_filename: str, refined_filename: str) -> str:
-    """元のファイルを削除し、推敲版ファイルを元のファイル名にリネーム"""
+    """DEBUG_ENABLED設定に基づいてファイル処理を実行"""
     import os
+    from datetime import datetime
+    
+    # DEBUG_ENABLED設定を確認
+    debug_enabled = globals().get('DEBUG_ENABLED', 'N')
     
     try:
-        # 元のファイルを削除
-        if os.path.exists(original_filename):
-            os.remove(original_filename)
-            print(f"🗑️ 元のファイルを削除: {original_filename}")
+        if debug_enabled.upper() == 'Y':
+            # DEBUG_ENABLED=Y: 元のファイルを名称変更して保持
+            if os.path.exists(original_filename):
+                # バックアップファイル名を生成（元ファイル名に _backup_timestamp を追加）
+                timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                backup_filename = original_filename.replace('.md', f'_backup_{timestamp}.md')
+                
+                os.rename(original_filename, backup_filename)
+                print(f"📁 元のファイルを保持: {original_filename} → {backup_filename}")
+            else:
+                print(f"⚠️ 元のファイルが見つかりません: {original_filename}")
+        else:
+            # DEBUG_ENABLED=N: 元のファイルを削除
+            if os.path.exists(original_filename):
+                os.remove(original_filename)
+                print(f"🗑️ 元のファイルを削除: {original_filename}")
         
         # 推敲版ファイルを元のファイル名にリネーム
         if os.path.exists(refined_filename):
