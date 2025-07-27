@@ -5806,7 +5806,7 @@ def analyze_broadcast_feasibility(metrics: Dict[str, Any], original_query: str, 
 
 def extract_cost_statistics_from_explain_cost(explain_cost_content: str) -> str:
     """
-    EXPLAIN COST結果から統計情報を抽出して構造化
+    EXPLAIN COST結果から統計情報を抽出して構造化（改善版）
     
     Args:
         explain_cost_content: EXPLAIN COSTの結果文字列
@@ -5821,36 +5821,48 @@ def extract_cost_statistics_from_explain_cost(explain_cost_content: str) -> str:
     
     try:
         lines = explain_cost_content.split('\n')
-        current_section = ""
         
         for line in lines:
             line = line.strip()
             if not line:
                 continue
                 
-            # テーブル統計情報の抽出
-            if 'statistics=' in line.lower() or 'stats=' in line.lower():
+            # テーブル統計情報の抽出（改善）
+            if 'statistics=' in line.lower() or 'stats=' in line.lower() or 'Statistics(' in line:
                 statistics_info.append(f"📊 テーブル統計: {line}")
             
-            # 行数情報の抽出
-            elif 'rows=' in line.lower() or 'rowcount=' in line.lower():
+            # 行数情報の抽出（改善）
+            elif 'rows=' in line.lower() or 'rowcount=' in line.lower() or 'rows:' in line.lower():
                 statistics_info.append(f"📈 行数情報: {line}")
             
-            # サイズ情報の抽出
-            elif 'size=' in line.lower() or 'sizeInBytes=' in line.lower():
+            # サイズ情報の抽出（改善）
+            elif ('size=' in line.lower() or 'sizeinbytes=' in line.lower() or 'sizeInBytes=' in line 
+                  or 'GB' in line or 'MB' in line or 'size:' in line.lower()):
                 statistics_info.append(f"💾 サイズ情報: {line}")
             
-            # コスト情報の抽出
-            elif 'cost=' in line.lower() or 'Cost(' in line:
+            # コスト情報の抽出（改善）
+            elif ('cost=' in line.lower() or 'Cost(' in line or 'cost:' in line.lower() 
+                  or 'costs:' in line.lower() or 'estimated cost' in line.lower()):
                 statistics_info.append(f"💰 コスト情報: {line}")
             
-            # 選択率情報の抽出
-            elif 'selectivity=' in line.lower() or 'filter=' in line.lower():
+            # 選択率情報の抽出（改善）
+            elif ('selectivity=' in line.lower() or 'filter=' in line.lower() or 'selectivity:' in line.lower()
+                  or 'selection' in line.lower()):
                 statistics_info.append(f"🎯 選択率情報: {line}")
             
-            # パーティション情報の抽出
-            elif 'partition' in line.lower() and ('count' in line.lower() or 'size' in line.lower()):
+            # パーティション情報の抽出（改善）
+            elif ('partition' in line.lower() and ('count' in line.lower() or 'size' in line.lower()
+                  or 'average' in line.lower() or 'per partition' in line.lower())):
                 statistics_info.append(f"🔄 パーティション情報: {line}")
+            
+            # メモリ情報の抽出（新規追加）
+            elif ('memory' in line.lower() or 'spill' in line.lower() or 'threshold' in line.lower()):
+                statistics_info.append(f"💾 メモリ情報: {line}")
+            
+            # JOIN情報の抽出（新規追加）
+            elif ('join' in line.lower() and ('cost' in line.lower() or 'selectivity' in line.lower()
+                  or 'input' in line.lower() or 'output' in line.lower())):
+                statistics_info.append(f"🔗 JOIN情報: {line}")
     
     except Exception as e:
         statistics_info.append(f"⚠️ 統計情報抽出エラー: {str(e)}")
