@@ -1,0 +1,40 @@
+# EXPLAIN実行結果 (originalクエリ)
+# 実行日時: 2025-01-27 14:00:00
+# クエリタイプ: original
+
+EXPLAIN結果:
+== Physical Plan ==
+AdaptiveSparkPlan isFinalPlan=false
++- == Final Plan ==
+   Exchange hashpartitioning(ss_customer_sk#1, 200), ENSURE_REQUIREMENTS, [plan_id=1]
+   +- HashAggregate(keys=[ss_customer_sk#1], functions=[sum(ss_net_paid#2)])
+      +- Exchange hashpartitioning(ss_customer_sk#1, 200), ENSURE_REQUIREMENTS, [plan_id=2]
+         +- HashAggregate(keys=[ss_customer_sk#1], functions=[partial_sum(ss_net_paid#2)])
+            +- Project [ss_customer_sk#1, ss_net_paid#2]
+               +- BroadcastHashJoin [ss_item_sk#3], [i_item_sk#4], Inner, BuildRight, false
+                  :- FileScan parquet tpcds.tpcds_sf1000_delta_lc.store_sales[ss_customer_sk#1,ss_net_paid#2,ss_item_sk#3] Batched: true, DataFilters: [], Format: Parquet, Location: InMemoryFileIndex(1 paths)[abfss://container@account.dfs.core.windows.net/delta/store_sales], PartitionFilters: [], PushedFilters: [], ReadSchema: struct<ss_customer_sk:int,ss_net_paid:decimal(7,2),ss_item_sk:int>
+                  +- BroadcastExchange HashedRelationBroadcastMode(List(cast(input[0, int, false] as bigint)),false), [plan_id=3]
+                     +- FileScan parquet tpcds.tpcds_sf1000_delta_lc.item[i_item_sk#4,i_brand_id#5] Batched: true, DataFilters: [isnotnull(i_brand_id#5), (i_brand_id#5 = 1001)], Format: Parquet, Location: InMemoryFileIndex(1 paths)[abfss://container@account.dfs.core.windows.net/delta/item], PartitionFilters: [], PushedFilters: [IsNotNull(i_brand_id), EqualTo(i_brand_id,1001)], ReadSchema: struct<i_item_sk:int,i_brand_id:int>
+
+== Photon Explanation ==
+== Photon Information ==
+Photon was enabled for this query.
+
+== Photon Operators ==
+The following operators in the query plan utilize Photon:
+  * FileScan parquet tpcds.tpcds_sf1000_delta_lc.store_sales (Plan Id 0) - Scan
+  * FileScan parquet tpcds.tpcds_sf1000_delta_lc.item (Plan Id 1) - Scan  
+  * Project (Plan Id 2) - Projection
+  * HashAggregate (Plan Id 3) - HashAggregate
+  * HashAggregate (Plan Id 4) - HashAggregate
+  * BroadcastHashJoin (Plan Id 5) - BroadcastHashJoin
+
+== Non-Photon Operators ==
+The following operators in the query plan do not utilize Photon:
+  * Exchange (Plan Id 6) - Not supported in Photon
+  * Exchange (Plan Id 7) - Not supported in Photon
+  * BroadcastExchange (Plan Id 8) - Not supported in Photon
+
+== Photon Utilization ==
+Photon utilization: 75%
+6 out of 9 operators utilized Photon. 

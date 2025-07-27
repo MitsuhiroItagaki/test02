@@ -1,0 +1,80 @@
+# EXPLAIN COST実行結果 (originalクエリ)
+# 実行日時: 2025-01-27 14:00:00
+# クエリタイプ: original
+
+EXPLAIN COST結果（統計情報付き）:
+== Optimized Logical Plan ==
+Aggregate [ss_customer_sk#1], [ss_customer_sk#1, sum(ss_net_paid#2) AS sum(ss_net_paid)#6]
++- Project [ss_customer_sk#1, ss_net_paid#2]
+   +- Join Inner, (ss_item_sk#3 = i_item_sk#4)
+      :- Relation tpcds.tpcds_sf1000_delta_lc.store_sales[ss_customer_sk#1,ss_net_paid#2,ss_item_sk#3]
+      +- Filter (i_brand_id#5 = 1001)
+         +- Relation tpcds.tpcds_sf1000_delta_lc.item[i_item_sk#4,i_brand_id#5]
+
+== Physical Plan ==
+AdaptiveSparkPlan isFinalPlan=false
++- == Final Plan ==
+   Exchange hashpartitioning(ss_customer_sk#1, 200), ENSURE_REQUIREMENTS, [plan_id=1], Statistics(sizeInBytes=2.4 GB, rows=120000000, isBroadcast=false)
+   +- HashAggregate(keys=[ss_customer_sk#1], functions=[sum(ss_net_paid#2)], output=[ss_customer_sk#1, sum(ss_net_paid)#6]), Statistics(sizeInBytes=2.4 GB, rows=120000000)
+      +- Exchange hashpartitioning(ss_customer_sk#1, 200), ENSURE_REQUIREMENTS, [plan_id=2], Statistics(sizeInBytes=4.8 GB, rows=240000000, isBroadcast=false)
+         +- HashAggregate(keys=[ss_customer_sk#1], functions=[partial_sum(ss_net_paid#2)], output=[ss_customer_sk#1, sum#7]), Statistics(sizeInBytes=4.8 GB, rows=240000000)
+            +- Project [ss_customer_sk#1, ss_net_paid#2], Statistics(sizeInBytes=9.6 GB, rows=240000000)
+               +- BroadcastHashJoin [ss_item_sk#3], [i_item_sk#4], Inner, BuildRight, false, Cost(rows=240000000, size=9.6 GB, selectivity=0.08)
+                  :- FileScan parquet tpcds.tpcds_sf1000_delta_lc.store_sales[ss_customer_sk#1,ss_net_paid#2,ss_item_sk#3], Statistics(sizeInBytes=120.0 GB, rows=3000000000), PartitionFilters: [], DataFilters: []
+                  +- BroadcastExchange HashedRelationBroadcastMode(List(cast(input[0, int, false] as bigint)),false), [plan_id=3], Statistics(sizeInBytes=28.8 MB, rows=1800000, isBroadcast=true)
+                     +- Filter (isnotnull(i_brand_id#5) AND (i_brand_id#5 = 1001)), Statistics(sizeInBytes=28.8 MB, rows=1800000, selectivity=0.09)
+                        +- FileScan parquet tpcds.tpcds_sf1000_delta_lc.item[i_item_sk#4,i_brand_id#5], Statistics(sizeInBytes=320.0 MB, rows=20000000), PartitionFilters: [], DataFilters: [isnotnull(i_brand_id#5), (i_brand_id#5 = 1001)]
+
+== Cost Information ==
+Total estimated cost: 15,250 units
+- Scan costs: 8,500 units
+- Join costs: 4,200 units  
+- Aggregate costs: 2,050 units
+- Exchange costs: 500 units
+
+== Table Statistics ==
+tpcds.tpcds_sf1000_delta_lc.store_sales:
+- Rows: 3,000,000,000
+- Size: 120.0 GB (compressed), 240.0 GB (uncompressed)
+- Compression ratio: 2.0x
+- Partitions: 1,500
+- Average partition size: 80.0 MB
+
+tpcds.tpcds_sf1000_delta_lc.item:
+- Rows: 20,000,000  
+- Size: 320.0 MB (compressed), 640.0 MB (uncompressed)
+- Compression ratio: 2.0x
+- Partitions: 8
+- Average partition size: 40.0 MB
+
+== Filter Selectivity ==
+Filter: i_brand_id = 1001
+- Input rows: 20,000,000
+- Output rows: 1,800,000
+- Selectivity: 0.09 (9%)
+
+== Join Statistics ==
+BroadcastHashJoin (ss_item_sk = i_item_sk):
+- Left input: 3,000,000,000 rows
+- Right input: 1,800,000 rows (broadcast)
+- Output: 240,000,000 rows
+- Join selectivity: 0.08 (8%)
+- Estimated join cost: 4,200 units
+
+== Memory Estimates ==
+HashAggregate:
+- Input: 240,000,000 rows
+- Estimated peak memory: 5.2 GB
+- Spill threshold: 4.0 GB
+- Spill probability: HIGH (78%)
+
+BroadcastHashJoin:
+- Broadcast table size: 28.8 MB
+- Memory required: 57.6 MB (2x safety factor)
+- Broadcast feasible: YES (under 30MB compressed threshold)
+
+== Partition Distribution ==
+store_sales partitions: 1,500
+- Estimated rows per partition: 2,000,000
+- Size per partition: 80.0 MB
+- Skew factor: 1.8 (moderate skew detected) 

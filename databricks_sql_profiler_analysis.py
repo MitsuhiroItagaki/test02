@@ -7475,6 +7475,143 @@ def generate_execution_plan_markdown_report_en(plan_info: Dict[str, Any]) -> str
     
     return '\n'.join(lines)
 
+
+def summarize_explain_results_with_llm(explain_content: str, explain_cost_content: str, query_type: str = "original") -> Dict[str, str]:
+    """
+    EXPLAIN + EXPLAIN COST結果をLLMで要約してトークン制限に対応
+    
+    Args:
+        explain_content: EXPLAIN結果の内容
+        explain_cost_content: EXPLAIN COST結果の内容  
+        query_type: クエリタイプ（"original" または "optimized"）
+    
+    Returns:
+        Dict containing summarized results
+    """
+    
+    # サイズ制限チェック（合計200KB以上で要約を実行）
+    total_size = len(explain_content) + len(explain_cost_content)
+    SUMMARIZATION_THRESHOLD = 200000  # 200KB
+    
+    if total_size < SUMMARIZATION_THRESHOLD:
+        print(f"📊 EXPLAIN + EXPLAIN COST合計サイズ: {total_size:,} 文字（要約不要）")
+        return {
+            'explain_summary': explain_content,
+            'explain_cost_summary': explain_cost_content,
+            'physical_plan_summary': explain_content,
+            'cost_statistics_summary': extract_cost_statistics_from_explain_cost(explain_cost_content),
+            'summarized': False
+        }
+    
+    print(f"📊 EXPLAIN + EXPLAIN COST合計サイズ: {total_size:,} 文字（要約実行）")
+    
+    # 要約用プロンプト
+    summarization_prompt = f"""
+あなたはDatabricksのSQLパフォーマンス専門家です。以下のEXPLAIN + EXPLAIN COST結果を簡潔に要約してください。
+
+【要約対象データ】
+- クエリタイプ: {query_type}
+- EXPLAIN結果サイズ: {len(explain_content):,} 文字
+- EXPLAIN COST結果サイズ: {len(explain_cost_content):,} 文字
+
+【EXPLAIN結果】
+```
+{explain_content[:20000]}{"..." if len(explain_content) > 20000 else ""}
+```
+
+【EXPLAIN COST結果】  
+```
+{explain_cost_content[:20000]}{"..." if len(explain_cost_content) > 20000 else ""}
+```
+
+【要約指示】
+以下の形式で簡潔に要約してください（合計5000文字以内）:
+
+## 📊 Physical Plan要約
+- 主要な処理ステップ（5-10個の重要な操作）
+- JOIN方式とデータ移動パターン
+- Photon利用状況とボトルネック
+
+## 💰 統計情報サマリー
+- テーブルサイズと行数の重要な情報
+- JOIN選択率とフィルタ効率
+- メモリ使用量とスピル予測
+- パーティション分散状況
+
+## ⚡ パフォーマンス分析
+- 実行コストの内訳
+- ボトルネックになりそうな操作
+- 最適化の余地がある箇所
+
+【重要】: 
+- 数値データは正確に記載
+- SQL最適化に重要な情報を優先
+- 5000文字以内で完結にまとめる
+"""
+
+    try:
+        # 設定されたLLMプロバイダーを使用
+        provider = LLM_CONFIG["provider"]
+        
+        if provider == "databricks":
+            summary_result = _call_databricks_llm(summarization_prompt)
+        elif provider == "openai":
+            summary_result = _call_openai_llm(summarization_prompt)
+        elif provider == "azure_openai":
+            summary_result = _call_azure_openai_llm(summarization_prompt)
+        elif provider == "anthropic":
+            summary_result = _call_anthropic_llm(summarization_prompt)
+        else:
+            # エラー時は切り詰め版を返す
+            print("❌ LLMプロバイダーエラー: 切り詰め版を使用します")
+            return {
+                'explain_summary': explain_content[:30000] + "\n\n⚠️ 切り詰められました",
+                'explain_cost_summary': explain_cost_content[:30000] + "\n\n⚠️ 切り詰められました", 
+                'physical_plan_summary': explain_content[:20000] + "\n\n⚠️ 切り詰められました",
+                'cost_statistics_summary': extract_cost_statistics_from_explain_cost(explain_cost_content),
+                'summarized': True
+            }
+        
+        # LLMエラーチェック
+        if isinstance(summary_result, str) and summary_result.startswith("LLM_ERROR:"):
+            print(f"❌ LLM要約エラー: 切り詰め版を使用します - {summary_result[10:200]}...")
+            return {
+                'explain_summary': explain_content[:30000] + "\n\n⚠️ 切り詰められました",
+                'explain_cost_summary': explain_cost_content[:30000] + "\n\n⚠️ 切り詰められました",
+                'physical_plan_summary': explain_content[:20000] + "\n\n⚠️ 切り詰められました", 
+                'cost_statistics_summary': extract_cost_statistics_from_explain_cost(explain_cost_content),
+                'summarized': True
+            }
+        
+        # thinking_enabled対応
+        if isinstance(summary_result, list):
+            summary_text = extract_main_content_from_thinking_response(summary_result)
+        else:
+            summary_text = str(summary_result)
+        
+        # 要約結果を分割して返す
+        print(f"✅ EXPLAIN + EXPLAIN COST要約完了: {len(summary_text):,} 文字")
+        
+        return {
+            'explain_summary': summary_text,
+            'explain_cost_summary': summary_text,  # 統合要約として同じ内容
+            'physical_plan_summary': summary_text,
+            'cost_statistics_summary': extract_cost_statistics_from_explain_cost(explain_cost_content),
+            'summarized': True
+        }
+        
+    except Exception as e:
+        print(f"❌ EXPLAIN要約中にエラー: {str(e)}")
+        # エラー時は切り詰め版を返す
+        return {
+            'explain_summary': explain_content[:30000] + f"\n\n⚠️ 要約エラーのため切り詰められました: {str(e)}",
+            'explain_cost_summary': explain_cost_content[:30000] + f"\n\n⚠️ 要約エラーのため切り詰められました: {str(e)}",
+            'physical_plan_summary': explain_content[:20000] + f"\n\n⚠️ 要約エラーのため切り詰められました: {str(e)}",
+            'cost_statistics_summary': extract_cost_statistics_from_explain_cost(explain_cost_content),
+            'summarized': True
+        }
+
+
 def generate_comprehensive_optimization_report(query_id: str, optimized_result: str, metrics: Dict[str, Any], analysis_result: str = "") -> str:
     """
     包括的な最適化レポートを生成
@@ -7508,75 +7645,27 @@ def generate_comprehensive_optimization_report(query_id: str, optimized_result: 
         
         # 最適化後を優先、なければオリジナル
         explain_files = explain_optimized_files if explain_optimized_files else explain_original_files
+        
+        # 2. 最新のEXPLAIN COST結果ファイルを検索
+        cost_original_files = glob.glob("output_explain_cost_original_*.txt")
+        cost_optimized_files = glob.glob("output_explain_cost_optimized_*.txt")
+        
+        # 最適化後を優先、なければオリジナル
+        cost_files = cost_optimized_files if cost_optimized_files else cost_original_files
+        
+        # 📊 EXPLAIN + EXPLAIN COST結果を要約してからレポートに組み込み
+        explain_content = ""
+        explain_cost_content = ""
+        query_type = "optimized" if (explain_optimized_files or cost_optimized_files) else "original"
+        # EXPLAIN ファイル読み込み
         if explain_files:
-            # 最新のファイルを取得
             latest_explain_file = max(explain_files, key=os.path.getctime)
             try:
                 with open(latest_explain_file, 'r', encoding='utf-8') as f:
                     explain_content = f.read()
-                
-                if OUTPUT_LANGUAGE == 'ja':
-                    explain_section = f"""
-
-## 🔍 6. EXPLAIN実行結果
-
-### 📄 実行プラン詳細
-
-**ファイル**: {latest_explain_file}
-
-```
-{explain_content}
-```
-
-### 📊 Physical Plan分析ポイント
-
-以下の観点から実行プランを分析しました：
-
-1. **ファイルスキャン効率**: テーブルスキャンのフィルタープッシュダウン適用状況
-2. **ジョイン戦略**: BROADCAST、SortMerge、HashJoinの適切な選択
-3. **シャッフル最適化**: データ移動の最小化とパーティション戦略
-4. **プロジェクション**: 不要なカラム読み込みの削除
-5. **Photon利用状況**: ベクトル化処理の適用範囲
-
-### 🚀 Photon Explanation分析
-
-Photon未対応操作や最適化機会について詳細な分析を実施しました。
-
-"""
-                else:
-                    explain_section = f"""
-
-## 🔍 6. EXPLAIN Execution Results
-
-### 📄 Execution Plan Details
-
-**File**: {latest_explain_file}
-
-```
-{explain_content}
-```
-
-### 📊 Physical Plan Analysis Points
-
-The execution plan was analyzed from the following perspectives:
-
-1. **File Scan Efficiency**: Filter pushdown application status for table scans
-2. **Join Strategy**: Appropriate selection of BROADCAST, SortMerge, HashJoin
-3. **Shuffle Optimization**: Data movement minimization and partitioning strategy
-4. **Projection**: Removal of unnecessary column reads
-5. **Photon Utilization**: Vectorized processing application scope
-
-### 🚀 Photon Explanation Analysis
-
-Detailed analysis of Photon-incompatible operations and optimization opportunities was performed.
-
-"""
-                    
+                print(f"✅ EXPLAIN結果を読み込み: {latest_explain_file}")
             except Exception as e:
-                if OUTPUT_LANGUAGE == 'ja':
-                    explain_section = f"\n\n## 🔍 6. EXPLAIN実行結果\n\n⚠️ EXPLAIN結果ファイルの読み込みに失敗: {str(e)}\n"
-                else:
-                    explain_section = f"\n\n## 🔍 6. EXPLAIN Execution Results\n\n⚠️ Failed to load EXPLAIN result file: {str(e)}\n"
+                print(f"⚠️ EXPLAIN結果の読み込みに失敗: {str(e)}")
         else:
             # フォールバック: 古いファイル名パターンもチェック
             old_explain_files = glob.glob("output_explain_plan_*.txt")
@@ -7586,90 +7675,41 @@ Detailed analysis of Photon-incompatible operations and optimization opportuniti
                     with open(latest_explain_file, 'r', encoding='utf-8') as f:
                         explain_content = f.read()
                         print(f"✅ 古い形式のEXPLAIN結果を読み込み: {latest_explain_file}")
-                    
-                    if OUTPUT_LANGUAGE == 'ja':
-                        explain_section = f"""
-
-## 🔍 6. EXPLAIN実行結果（旧形式）
-
-### 📄 実行プラン詳細
-
-**ファイル**: {latest_explain_file}
-
-```
-{explain_content}
-```
-
-"""
-                    else:
-                        explain_section = f"""
-
-## 🔍 6. EXPLAIN Execution Results (Legacy Format)
-
-### 📄 Execution Plan Details
-
-**File**: {latest_explain_file}
-
-```
-{explain_content}
-```
-
-"""
                 except Exception as e:
                     print(f"⚠️ 古い形式EXPLAIN結果の読み込みに失敗: {str(e)}")
-                    if OUTPUT_LANGUAGE == 'ja':
-                        explain_section = f"\n\n## 🔍 6. EXPLAIN実行結果\n\n⚠️ EXPLAIN結果ファイルの読み込みに失敗: {str(e)}\n"
-                    else:
-                        explain_section = f"\n\n## 🔍 6. EXPLAIN Execution Results\n\n⚠️ Failed to load EXPLAIN result file: {str(e)}\n"
-            else:
-                if OUTPUT_LANGUAGE == 'ja':
-                    explain_section = f"\n\n## 🔍 6. EXPLAIN実行結果\n\n⚠️ EXPLAIN結果ファイルが見つかりません。\n"
-                else:
-                    explain_section = f"\n\n## 🔍 6. EXPLAIN Execution Results\n\n⚠️ EXPLAIN result file not found.\n"
         
-        # 2. 最新のEXPLAIN COST結果ファイルを検索
-        cost_original_files = glob.glob("output_explain_cost_original_*.txt")
-        cost_optimized_files = glob.glob("output_explain_cost_optimized_*.txt")
-        
-        # 最適化後を優先、なければオリジナル
-        cost_files = cost_optimized_files if cost_optimized_files else cost_original_files
-        
+        # EXPLAIN COST ファイル読み込み
         if cost_files:
             latest_cost_file = max(cost_files, key=os.path.getctime)
             try:
                 with open(latest_cost_file, 'r', encoding='utf-8') as f:
                     explain_cost_content = f.read()
                     print(f"💰 包括レポート用EXPLAIN COST結果を読み込み: {latest_cost_file}")
-                
-                # 統計情報の抽出
-                cost_statistics = extract_cost_statistics_from_explain_cost(explain_cost_content)
-                
-                if OUTPUT_LANGUAGE == 'ja':
-                    explain_cost_section = f"""
+            except Exception as e:
+                print(f"⚠️ EXPLAIN COST結果の読み込みに失敗: {str(e)}")
+        
+        # 📊 要約機能を使ってトークン制限に対応
+        summary_results = summarize_explain_results_with_llm(explain_content, explain_cost_content, query_type)
+        
+        # 要約結果を使ってレポートセクションを構築
+        if summary_results['summarized']:
+            print(f"📊 要約版レポートセクション生成（合計サイズ削減）")
+        
+        if OUTPUT_LANGUAGE == 'ja':
+            explain_section = f"""
 
-## 💰 7. EXPLAIN COST統計分析
+## 🔍 6. EXPLAIN + EXPLAIN COST統合分析結果
 
-### 📊 統計情報詳細
+### 📊 要約された実行プラン・統計情報
 
-**ファイル**: {latest_cost_file}
+**分析対象**: {query_type}クエリ
+**要約実行**: {'はい（トークン制限対応）' if summary_results['summarized'] else 'いいえ（サイズ小）'}
 
-### 🎯 抽出された統計情報
+{summary_results['explain_summary']}
 
-```
-{cost_statistics}
-```
+### 💰 統計ベース最適化の効果
 
-### 📈 統計ベース最適化の価値
-
-**EXPLAIN COST統計を活用することで以下の改善が可能**:
-
-1. **正確なテーブルサイズ判定**: 推測ではなく実際の統計によるBROADCAST適用判断
-2. **選択率ベース最適化**: WHERE条件の実行順序とフィルタ効率の向上
-3. **コストベースJOIN戦略**: 複数のJOIN手法から最適解の自動選択
-4. **パーティション数最適化**: 行数統計に基づく最適な並列度設定
-5. **スピル事前予測**: メモリ使用量の予測によるスピル回避策
-
-### 🚀 従来手法との比較
+統計情報を活用することで以下の改善効果が期待できます：
 
 | 項目 | 従来（推測ベース） | 統計ベース | 改善効果 |
 |------|-------------------|-----------|----------|
@@ -7678,33 +7718,27 @@ Detailed analysis of Photon-incompatible operations and optimization opportuniti
 | パーティション最適化 | 約50% | 約90% | **+40%** |
 | 全体最適化効果 | 平均30%改善 | 平均60%改善 | **+30%** |
 
+### 🎯 主要統計情報
+
+{summary_results['cost_statistics_summary']}
+
 """
-                else:
-                    explain_cost_section = f"""
+            explain_cost_section = ""  # 統合セクションなので個別セクションは不要
+        else:
+            explain_section = f"""
 
-## 💰 7. EXPLAIN COST Statistical Analysis
+## 🔍 6. EXPLAIN + EXPLAIN COST Integrated Analysis Results
 
-### 📊 Statistical Information Details
+### 📊 Summarized Execution Plan & Statistical Information
 
-**File**: {latest_cost_file}
+**Analysis Target**: {query_type} query
+**Summarization**: {'Yes (Token Limit Adaptation)' if summary_results['summarized'] else 'No (Small Size)'}
 
-### 🎯 Extracted Statistical Information
+{summary_results['explain_summary']}
 
-```
-{cost_statistics}
-```
+### 💰 Effects of Statistics-Based Optimization
 
-### 📈 Value of Statistics-Based Optimization
-
-**Improvements possible by leveraging EXPLAIN COST statistics**:
-
-1. **Accurate Table Size Determination**: BROADCAST application decisions based on actual statistics rather than guesswork
-2. **Selectivity-Based Optimization**: Improved WHERE condition execution order and filter efficiency
-3. **Cost-Based JOIN Strategy**: Automatic selection of optimal solution from multiple JOIN methods
-4. **Partition Number Optimization**: Optimal parallelism setting based on row count statistics
-5. **Spill Prediction**: Spill avoidance strategies through memory usage prediction
-
-### 🚀 Comparison with Traditional Methods
+The following improvement effects can be expected by leveraging statistical information:
 
 | Item | Traditional (Guess-based) | Statistics-based | Improvement |
 |------|---------------------------|------------------|-------------|
@@ -7713,20 +7747,21 @@ Detailed analysis of Photon-incompatible operations and optimization opportuniti
 | Partition Optimization | ~50% | ~90% | **+40%** |
 | Overall Optimization Effect | Average 30% improvement | Average 60% improvement | **+30%** |
 
+### 🎯 Key Statistical Information
+
+{summary_results['cost_statistics_summary']}
+
 """
-                    
-            except Exception as e:
-                print(f"⚠️ 包括レポート用EXPLAIN COST結果の読み込みに失敗: {str(e)}")
-                if OUTPUT_LANGUAGE == 'ja':
-                    explain_cost_section = f"\n\n## 💰 7. EXPLAIN COST統計分析\n\n⚠️ EXPLAIN COST結果ファイルの読み込みに失敗: {str(e)}\n"
-                else:
-                    explain_cost_section = f"\n\n## 💰 7. EXPLAIN COST Statistical Analysis\n\n⚠️ Failed to load EXPLAIN COST result file: {str(e)}\n"
+            explain_cost_section = ""  # Integrated section, so no separate section needed
+    else:
+        if OUTPUT_LANGUAGE == 'ja':
+            explain_section = "\n\n## 🔍 6. EXPLAIN + EXPLAIN COST統合分析結果\n\n⚠️ EXPLAIN_ENABLED = 'N' のため、EXPLAIN分析はスキップされました。\n"
+            explain_cost_section = ""
         else:
-            if OUTPUT_LANGUAGE == 'ja':
-                explain_cost_section = f"\n\n## 💰 7. EXPLAIN COST統計分析\n\n⚠️ EXPLAIN COST結果ファイルが見つかりません。\n統計ベース最適化には事前のEXPLAIN COST実行が必要です。\n"
-            else:
-                explain_cost_section = f"\n\n## 💰 7. EXPLAIN COST Statistical Analysis\n\n⚠️ EXPLAIN COST result file not found.\nStatistics-based optimization requires prior EXPLAIN COST execution.\n"
+            explain_section = "\n\n## 🔍 6. EXPLAIN + EXPLAIN COST Integrated Analysis Results\n\n⚠️ EXPLAIN analysis was skipped because EXPLAIN_ENABLED = 'N'.\n"
+            explain_cost_section = ""
     
+    # 基本情報の取得
     # 基本情報の取得
     overall_metrics = metrics.get('overall_metrics', {})
     bottleneck_indicators = metrics.get('bottleneck_indicators', {})
