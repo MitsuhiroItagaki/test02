@@ -5952,10 +5952,29 @@ def extract_structured_cost_statistics(explain_cost_content: str) -> Dict[str, A
         total_rows = 0
         broadcast_candidates = []
         
+        # テーブル名とサイズの対応を追跡
+        table_name_size_map = {}  # {table_name: {"size_bytes": int, "size_str": str, "rows": int}}
+        current_table_context = None  # 現在処理中のテーブル名
+        
         for line in lines:
             line = line.strip()
             if not line:
                 continue
+            
+            # 🔍 テーブル名の抽出（Relationから）
+            table_name_match = re.search(r'Relation\s+([a-zA-Z_][a-zA-Z0-9_]*\.[a-zA-Z_][a-zA-Z0-9_]*)', line)
+            if table_name_match:
+                current_table_context = table_name_match.group(1)
+                
+            # 🔍 テーブル名の抽出（Join条件から）
+            elif 'Join' in line and '=' in line:
+                # JOIN条件からテーブル名を推定 (例: ty_brand#456 = ly_brand#789)
+                join_match = re.search(r'([a-zA-Z_][a-zA-Z0-9_]*)[#.]', line)
+                if join_match and not current_table_context:
+                    # JOIN条件のプレフィックスからテーブル推定
+                    prefix = join_match.group(1)
+                    if len(prefix) > 2:  # 意味のあるプレフィックス
+                        current_table_context = f"{prefix}_table"
                 
             # テーブル統計の抽出
             if 'Statistics(' in line:
@@ -5963,12 +5982,20 @@ def extract_structured_cost_statistics(explain_cost_content: str) -> Dict[str, A
                 size_match = re.search(r'sizeInBytes=([0-9.]+)\s*([KMGT]i?B)?', line)
                 rows_match = re.search(r'rowCount=(\d+)', line)
                 
+                # テーブル名の決定
+                if current_table_context:
+                    table_name = current_table_context
+                else:
+                    # フォールバック: 行番号から推定
+                    line_table_match = re.search(r'([a-zA-Z_][a-zA-Z0-9_]*)', line)
+                    table_name = line_table_match.group(1) if line_table_match else f"table_{tables_found}"
+                
                 if size_match:
                     size_val = float(size_match.group(1))
                     size_unit = size_match.group(2) or 'B'
                     size_str = f"{size_val}{size_unit}"
                     
-                    # 最大テーブルの追跡
+                    # サイズ変換（バイト単位）
                     size_bytes = size_val
                     if 'KiB' in size_unit:
                         size_bytes *= 1024
@@ -5978,18 +6005,31 @@ def extract_structured_cost_statistics(explain_cost_content: str) -> Dict[str, A
                         size_bytes *= 1024 * 1024 * 1024
                     elif 'TiB' in size_unit:
                         size_bytes *= 1024 * 1024 * 1024 * 1024
-                        
+                    
+                    # 行数の取得
+                    rows = int(rows_match.group(1)) if rows_match else 0
+                    
+                    # テーブル統計の保存
+                    extracted["table_stats"][table_name] = {
+                        "size_bytes": size_bytes,
+                        "size_str": size_str,
+                        "rows": rows,
+                        "is_broadcast_candidate": size_bytes < 30 * 1024 * 1024  # 30MB
+                    }
+                    
+                    # 最大テーブルの追跡
                     if size_bytes > largest_table["size"]:
-                        largest_table = {"name": f"table_{tables_found}", "size": size_bytes, "size_str": size_str}
+                        largest_table = {"name": table_name, "size": size_bytes, "size_str": size_str}
                     
                     # ブロードキャスト候補（30MB未満）
                     if size_bytes < 30 * 1024 * 1024:  # 30MB
-                        broadcast_candidates.append(size_str)
+                        broadcast_candidates.append({"table": table_name, "size": size_str})
                     
                     tables_found += 1
+                    total_rows += rows
                     
-                if rows_match:
-                    total_rows += int(rows_match.group(1))
+                # 現在のコンテキストをリセット（次のテーブル用）
+                current_table_context = None
                     
             # コスト情報の抽出  
             elif 'Cost(' in line:
@@ -6013,7 +6053,12 @@ def extract_structured_cost_statistics(explain_cost_content: str) -> Dict[str, A
             "broadcast_candidates": broadcast_candidates[:5],  # 上位5個まで
             "tables_analyzed": tables_found,
             "cost_operations": costs_found,
-            "memory_estimates": memory_found
+            "memory_estimates": memory_found,
+            "table_breakdown": {
+                "total_tables": len(extracted["table_stats"]),
+                "largest_table_name": largest_table.get("name", "unknown"),
+                "broadcast_table_names": [bc.get("table", "unknown") for bc in broadcast_candidates[:3]]
+            }
         }
         
         # 抽出サマリー生成
@@ -6619,24 +6664,31 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
 **🧠 構造化統計データの活用指針:**
 上記は構造化抽出された統計情報です。以下の項目を重点的に分析してください：
 
+- **table_stats**: テーブル別詳細統計（テーブル名、サイズ、行数、BROADCAST判定）
 - **critical_stats**: 重要統計値（最大テーブル、総行数、BROADCAST候補）
-- **largest_table**: 最大テーブルのサイズ（BROADCAST判定の基準）
-- **broadcast_candidates**: 30MB未満の小テーブル（BROADCAST対象）
-- **total_rows**: 総行数（パーティション数算出に使用）
-- **cost_breakdown**: 処理コスト（JOIN戦略選択に使用）
-- **memory_estimates**: メモリ予測（スピル回避に使用）
+- **largest_table**: 最大テーブルの名前とサイズ（BROADCAST判定の基準）
+- **broadcast_candidates**: 30MB未満の小テーブル（テーブル名とサイズ）
+- **table_breakdown**: テーブル名の詳細（最大テーブル名、BROADCAST対象テーブル名）
 
-**構造化統計ベースの精密最適化:**
-- サイズ統計: largest_tableとbroadcast_candidatesから正確なBROADCAST判定
-- 行数統計: total_rowsから最適パーティション数を算出
-- コスト統計: cost_breakdownから効率的なJOIN順序を決定
-- メモリ統計: memory_estimatesからスピル回避戦略を立案
+**🎯 テーブル名を使った精密最適化:**
+1. **具体的なBROADCASTヒント生成:**
+   - broadcast_candidatesから `/*+ BROADCAST(テーブル名) */` ヒントを生成
+   - テーブル名とサイズの対応で正確な判定
 
-**🎯 構造化データ解析のポイント:**
-1. critical_stats.largest_tableが1GB以上 → BROADCAST対象外
-2. broadcast_candidatesの存在 → BROADCAST JOINの積極適用
-3. total_rowsが10億行以上 → パーティション数増加検討
-4. memory_estimatesでspillリスク評価 → REPARTITIONヒント適用
+2. **JOIN順序の具体的提案:**
+   - largest_table.nameを最後に配置
+   - table_statsのサイズ順でJOIN順序を最適化
+   - 具体的なテーブル名でJOIN文を改善
+
+3. **曖昧性解決の具体的提案:**
+   - エラーメッセージのテーブル名とtable_statsを照合
+   - 具体的なエイリアス提案（例: `store_sales.ss_item_sk`）
+
+**🚀 構造化データ解析の実行例:**
+1. table_stats内でis_broadcast_candidate=trueのテーブル → BROADCAST適用
+2. largest_table_nameが1GB以上 → 大テーブルとして最終JOINに配置
+3. broadcast_table_namesから具体的なヒント：`/*+ BROADCAST(item, date_dim) */`
+4. テーブル名を明示したJOIN順序提案を生成
 ''' if explain_enabled.upper() == 'Y' and cost_statistics else '(EXPLAIN COST実行が無効、または統計情報が利用できません)'}
 
 【🎯 処理速度重視の最適化要求】
