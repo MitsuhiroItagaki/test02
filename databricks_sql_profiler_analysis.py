@@ -8445,6 +8445,7 @@ def generate_performance_comparison_section(performance_comparison: Dict[str, An
         str: パフォーマンス比較セクションのマークダウン
     """
     
+    # 🚨 緊急修正: フォールバック評価対応
     if not performance_comparison:
         if language == 'ja':
             return """
@@ -8454,11 +8455,11 @@ def generate_performance_comparison_section(performance_comparison: Dict[str, An
 | 項目 | 状況 |
 |------|------|
 | 比較実行 | ❌ 未実行 |
-| 理由 | EXPLAIN COST取得失敗またはスキップ |
+| 理由 | EXPLAIN及びEXPLAIN COST取得失敗 |
 | 安全性 | ✅ 構文検証済みで実行可能 |
-| 推奨 | 🚀 最適化クエリを使用 |
+| 推奨 | 🚀 最適化クエリを使用（デフォルト） |
 
-💡 **Note**: パフォーマンス比較がスキップされましたが、構文的に正常な最適化クエリが生成されています。
+💡 **Note**: パフォーマンス比較は実行できませんでしたが、構文的に正常な最適化クエリが生成されています。
 """
         else:
             return """
@@ -8468,12 +8469,17 @@ def generate_performance_comparison_section(performance_comparison: Dict[str, An
 | Item | Status |
 |------|--------|
 | Comparison | ❌ Not executed |
-| Reason | EXPLAIN COST acquisition failed or skipped |
+| Reason | EXPLAIN and EXPLAIN COST acquisition failed |
 | Safety | ✅ Syntax verified and executable |
-| Recommendation | 🚀 Use optimized query |
+| Recommendation | 🚀 Use optimized query (default) |
 
-💡 **Note**: Although performance comparison was skipped, a syntactically correct optimized query has been generated.
+💡 **Note**: Although performance comparison was not executed, a syntactically correct optimized query has been generated.
 """
+    
+    # フォールバック評価の場合の特別処理
+    if performance_comparison.get('evaluation_type') == 'fallback_plan_analysis':
+        fallback_eval = performance_comparison.get('fallback_evaluation', {})
+        return generate_fallback_performance_section(fallback_eval, language)
     
     # パフォーマンス比較結果の詳細表示
     recommendation = performance_comparison.get('recommendation', 'unknown')
@@ -9568,6 +9574,188 @@ def enhance_error_correction_with_syntax_validation(corrected_query: str, origin
 -- 📋 元のエラー: {error_info[:200]}
 
 {original_query}"""
+
+
+def fallback_performance_evaluation(original_explain: str, optimized_explain: str) -> Dict[str, Any]:
+    """
+    EXPLAIN COST失敗時のフォールバック パフォーマンス評価
+    EXPLAIN結果のプラン複雑度とPhoton利用度で簡易比較
+    """
+    
+    try:
+        import re
+        
+        # プラン複雑度の評価
+        def analyze_plan_complexity(explain_text):
+            metrics = {
+                'join_count': 0,
+                'scan_count': 0,
+                'exchange_count': 0,
+                'photon_ops': 0,
+                'plan_depth': 0,
+                'total_operations': 0
+            }
+            
+            # JOIN操作カウント
+            metrics['join_count'] = len(re.findall(r'\bJoin\b|\bBroadcastHashJoin\b|\bSortMergeJoin\b', explain_text, re.IGNORECASE))
+            
+            # SCAN操作カウント
+            metrics['scan_count'] = len(re.findall(r'\bScan\b|\bFileScan\b|\bTableScan\b', explain_text, re.IGNORECASE))
+            
+            # Exchange操作カウント（Shuffle）
+            metrics['exchange_count'] = len(re.findall(r'\bExchange\b|\bShuffle\b', explain_text, re.IGNORECASE))
+            
+            # Photon操作カウント
+            metrics['photon_ops'] = len(re.findall(r'\bPhoton\w*\b', explain_text, re.IGNORECASE))
+            
+            # プラン深度の推定（インデント数の最大値）
+            lines = explain_text.split('\n')
+            max_indent = 0
+            for line in lines:
+                if line.strip():
+                    indent_level = (len(line) - len(line.lstrip(' +'))) // 2
+                    max_indent = max(max_indent, indent_level)
+            metrics['plan_depth'] = max_indent
+            
+            # 総操作数
+            metrics['total_operations'] = metrics['join_count'] + metrics['scan_count'] + metrics['exchange_count']
+            
+            return metrics
+        
+        original_metrics = analyze_plan_complexity(original_explain)
+        optimized_metrics = analyze_plan_complexity(optimized_explain)
+        
+        # 改善ポイントの評価
+        improvements = []
+        concerns = []
+        
+        # JOIN効率化
+        if optimized_metrics['join_count'] < original_metrics['join_count']:
+            improvements.append(f"JOIN効率化: {original_metrics['join_count']} → {optimized_metrics['join_count']}操作")
+        elif optimized_metrics['join_count'] > original_metrics['join_count']:
+            concerns.append(f"JOIN操作増加: {original_metrics['join_count']} → {optimized_metrics['join_count']}操作")
+        
+        # Photon活用度
+        if optimized_metrics['photon_ops'] > original_metrics['photon_ops']:
+            improvements.append(f"Photon活用拡大: {original_metrics['photon_ops']} → {optimized_metrics['photon_ops']}操作")
+        elif optimized_metrics['photon_ops'] < original_metrics['photon_ops']:
+            concerns.append(f"Photon活用減少: {original_metrics['photon_ops']} → {optimized_metrics['photon_ops']}操作")
+        
+        # Exchange/Shuffle効率化
+        if optimized_metrics['exchange_count'] < original_metrics['exchange_count']:
+            improvements.append(f"Shuffle削減: {original_metrics['exchange_count']} → {optimized_metrics['exchange_count']}操作")
+        elif optimized_metrics['exchange_count'] > original_metrics['exchange_count']:
+            concerns.append(f"Shuffle増加: {original_metrics['exchange_count']} → {optimized_metrics['exchange_count']}操作")
+        
+        # プラン複雑度
+        if optimized_metrics['plan_depth'] < original_metrics['plan_depth']:
+            improvements.append(f"プラン簡素化: 深度{original_metrics['plan_depth']} → {optimized_metrics['plan_depth']}")
+        elif optimized_metrics['plan_depth'] > original_metrics['plan_depth']:
+            concerns.append(f"プラン複雑化: 深度{original_metrics['plan_depth']} → {optimized_metrics['plan_depth']}")
+        
+        # 総合評価
+        improvement_score = len(improvements)
+        concern_score = len(concerns)
+        
+        if improvement_score > concern_score:
+            overall_status = "improvement_likely"
+            recommendation = "use_optimized"
+            summary = "✅ 実行プラン分析によりパフォーマンス改善の可能性が高い"
+        elif concern_score > improvement_score:
+            overall_status = "degradation_possible"
+            recommendation = "use_original"
+            summary = "⚠️ 実行プラン分析によりパフォーマンス悪化の可能性あり"
+        else:
+            overall_status = "neutral"
+            recommendation = "use_optimized"
+            summary = "➖ 実行プラン分析では大きな変化なし（最適化クエリを推奨）"
+        
+        return {
+            'evaluation_type': 'fallback_plan_analysis',
+            'original_metrics': original_metrics,
+            'optimized_metrics': optimized_metrics,
+            'improvements': improvements,
+            'concerns': concerns,
+            'overall_status': overall_status,
+            'recommendation': recommendation,
+            'summary': summary,
+            'confidence': 'medium',
+            'details': improvements + concerns if improvements or concerns else ["実行プランに大きな変化なし"]
+        }
+        
+    except Exception as e:
+        return {
+            'evaluation_type': 'fallback_error',
+            'error': str(e),
+            'overall_status': 'unknown',
+            'recommendation': 'use_optimized',
+            'summary': f"⚠️ フォールバック評価でエラー: {str(e)}（最適化クエリを推奨）",
+            'confidence': 'low',
+            'details': [f"評価エラー: {str(e)}", "保守的に最適化クエリを推奨"]
+        }
+
+
+def generate_fallback_performance_section(fallback_evaluation: Dict[str, Any], language: str = 'ja') -> str:
+    """
+    フォールバック パフォーマンス評価のレポートセクション生成
+    """
+    
+    if not fallback_evaluation:
+        return ""
+    
+    if language == 'ja':
+        section = f"""
+
+### 🔍 5. 簡易パフォーマンス評価結果（EXPLAIN COST代替）
+
+**📊 評価結果**: {fallback_evaluation['summary']}
+
+#### 🎯 実行プラン分析による評価
+
+**信頼度**: {fallback_evaluation['confidence'].upper()}（EXPLAIN結果ベース）
+
+**推奨**: {'**最適化クエリを使用**' if fallback_evaluation['recommendation'] == 'use_optimized' else '**元のクエリを使用**'}
+
+#### 📋 検出された変化
+
+"""
+        
+        if fallback_evaluation.get('details'):
+            for detail in fallback_evaluation['details']:
+                section += f"- {detail}\n"
+        else:
+            section += "- 実行プランに大きな変化なし\n"
+        
+        if fallback_evaluation.get('original_metrics') and fallback_evaluation.get('optimized_metrics'):
+            orig = fallback_evaluation['original_metrics']
+            opt = fallback_evaluation['optimized_metrics']
+            
+            section += f"""
+
+#### 📊 プラン複雑度比較
+
+| 項目 | 元のクエリ | 最適化クエリ | 変化 |
+|------|------------|-------------|------|
+| JOIN操作数 | {orig['join_count']} | {opt['join_count']} | {'✅改善' if opt['join_count'] < orig['join_count'] else '❌増加' if opt['join_count'] > orig['join_count'] else '➖同等'} |
+| Photon操作数 | {orig['photon_ops']} | {opt['photon_ops']} | {'✅改善' if opt['photon_ops'] > orig['photon_ops'] else '❌減少' if opt['photon_ops'] < orig['photon_ops'] else '➖同等'} |
+| Shuffle操作数 | {orig['exchange_count']} | {opt['exchange_count']} | {'✅改善' if opt['exchange_count'] < orig['exchange_count'] else '❌増加' if opt['exchange_count'] > orig['exchange_count'] else '➖同等'} |
+| プラン深度 | {orig['plan_depth']} | {opt['plan_depth']} | {'✅改善' if opt['plan_depth'] < orig['plan_depth'] else '❌増加' if opt['plan_depth'] > orig['plan_depth'] else '➖同等'} |
+
+"""
+        
+        section += f"""
+
+#### ⚠️ 評価の制限事項
+
+- **EXPLAIN COST未取得**: 正確なコスト・メモリ使用量比較不可
+- **実行統計不明**: 実際の実行時間やリソース使用量は不明
+- **推定ベース**: 実行プラン構造からの推定評価のみ
+- **推奨**: 可能であれば実際の実行テストで確認することを推奨
+
+💡 **より正確な評価のため**: AMBIGUOUS_REFERENCE等のエラーを解決してEXPLAIN COSTを実行することを推奨
+"""
+        
+    return section
 
 
 def fix_common_ambiguous_references(sql_query: str) -> str:
@@ -10949,11 +11137,61 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                 print(f"📄 エラー詳細: {original_explain_cost_result['error_file']}")
         
         if not optimized_cost_success:
-            print("⚠️ 最適化クエリのEXPLAIN COST実行失敗: パフォーマンス比較をスキップ")
+            print("⚠️ 最適化クエリのEXPLAIN COST実行失敗: フォールバック評価を実行")
             if 'error_file' in optimized_explain_cost_result:
                 print(f"📄 エラー詳細: {optimized_explain_cost_result['error_file']}")
         
-        if (original_cost_success and optimized_cost_success):
+        # 🚨 緊急修正: EXPLAIN COST失敗時のフォールバック パフォーマンス評価
+        if not (original_cost_success and optimized_cost_success):
+            print("🔄 フォールバック: EXPLAIN結果による簡易パフォーマンス評価を実行")
+            
+            # EXPLAIN結果が利用可能な場合のフォールバック評価
+            original_explain_success = ('explain_file' in original_explain_cost_result and 
+                                       'error_file' not in original_explain_cost_result)
+            optimized_explain_success = ('explain_file' in optimized_explain_cost_result and 
+                                        'error_file' not in optimized_explain_cost_result)
+            
+            if original_explain_success and optimized_explain_success:
+                try:
+                    # EXPLAIN結果を読み込み
+                    with open(original_explain_cost_result['explain_file'], 'r', encoding='utf-8') as f:
+                        original_explain_content = f.read()
+                    
+                    with open(optimized_explain_cost_result['explain_file'], 'r', encoding='utf-8') as f:
+                        optimized_explain_content = f.read()
+                    
+                    # フォールバック評価実行
+                    fallback_evaluation = fallback_performance_evaluation(original_explain_content, optimized_explain_content)
+                    
+                    print(f"📊 フォールバック評価結果: {fallback_evaluation['summary']}")
+                    print(f"   - 推奨: {fallback_evaluation['recommendation']}")
+                    print(f"   - 信頼度: {fallback_evaluation['confidence']}")
+                    
+                    for detail in fallback_evaluation['details']:
+                        print(f"   - {detail}")
+                    
+                    # performance_comparisonの代替として使用
+                    performance_comparison = {
+                        'is_optimization_beneficial': fallback_evaluation['recommendation'] == 'use_optimized',
+                        'performance_degradation_detected': fallback_evaluation['overall_status'] == 'degradation_possible',
+                        'recommendation': fallback_evaluation['recommendation'],
+                        'evaluation_type': 'fallback_plan_analysis',
+                        'details': fallback_evaluation['details'],
+                        'fallback_evaluation': fallback_evaluation,
+                        'total_cost_ratio': 1.0,  # EXPLAIN COSTなしのため未知
+                        'memory_usage_ratio': 1.0  # EXPLAIN COSTなしのため未知
+                    }
+                    
+                    print("✅ フォールバック パフォーマンス評価完了")
+                    
+                except Exception as e:
+                    print(f"❌ フォールバック評価でもエラー: {str(e)}")
+                    performance_comparison = None
+            else:
+                print("❌ EXPLAIN結果も不足のため、パフォーマンス評価不可")
+                performance_comparison = None
+        
+        elif (original_cost_success and optimized_cost_success):
             
             try:
                 # EXPLAIN COST内容を読み込み
