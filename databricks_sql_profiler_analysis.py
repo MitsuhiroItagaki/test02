@@ -100,6 +100,14 @@ STRUCTURED_EXTRACTION_ENABLED = 'Y'
 # - 最大試行回数に達した場合: 元の動作可能クエリを使用してファイル生成
 MAX_RETRIES = 2
 
+# 🚀 反復的最適化の最大試行回数設定（MAX_OPTIMIZATION_ATTEMPTS: デフォルト3回）
+# パフォーマンス悪化を検出した場合の改善試行回数
+# - 1回目: 初回最適化クエリ生成・パフォーマンス検証
+# - 2回目以降: 悪化原因分析結果に基づく修正版クエリ生成・検証
+# - 最大試行回数に達した場合: 元クエリを使用
+# 注：構文エラーの修正（MAX_RETRIES）とは別のパラメータです
+MAX_OPTIMIZATION_ATTEMPTS = 3
+
 # 🗂️ カタログとデータベース設定（EXPLAIN文実行時に使用）
 CATALOG = 'tpcds'
 DATABASE = 'tpcds_sf1000_delta_lc'
@@ -10373,9 +10381,431 @@ def compare_query_performance(original_explain_cost: str, optimized_explain_cost
     
     return comparison_result
 
+
+def analyze_degradation_causes(performance_comparison: Dict[str, Any], original_explain_cost: str = "", optimized_explain_cost: str = "") -> Dict[str, str]:
+    """
+    パフォーマンス悪化の原因を分析し、修正指示を生成
+    """
+    degradation_analysis = {
+        'primary_cause': 'unknown',
+        'specific_issues': [],
+        'fix_instructions': [],
+        'confidence_level': 'low',
+        'analysis_details': {}
+    }
+    
+    try:
+        if not performance_comparison or not performance_comparison.get('performance_degradation_detected'):
+            degradation_analysis['primary_cause'] = 'no_degradation'
+            return degradation_analysis
+        
+        details = performance_comparison.get('details', [])
+        cost_ratio = performance_comparison.get('total_cost_ratio', 1.0)
+        memory_ratio = performance_comparison.get('memory_usage_ratio', 1.0)
+        
+        # 🔍 コスト悪化の深刻度分析
+        if cost_ratio > 1.5:  # 50%以上の悪化
+            degradation_analysis['confidence_level'] = 'high'
+            severity = 'critical'
+        elif cost_ratio > 1.3:  # 30%以上の悪化
+            degradation_analysis['confidence_level'] = 'medium'
+            severity = 'significant'
+        else:
+            degradation_analysis['confidence_level'] = 'low'
+            severity = 'minor'
+        
+        degradation_analysis['analysis_details']['cost_degradation_severity'] = severity
+        degradation_analysis['analysis_details']['cost_ratio'] = cost_ratio
+        degradation_analysis['analysis_details']['memory_ratio'] = memory_ratio
+        
+        # 🎯 主要原因の特定とJOIN操作数分析
+        for detail in details:
+            detail_str = str(detail).lower()
+            
+            # JOIN操作数の大幅増加検出
+            if 'join操作数増加' in detail_str or 'join' in detail_str:
+                degradation_analysis['primary_cause'] = 'excessive_joins'
+                degradation_analysis['specific_issues'].append('JOIN操作数の大幅増加')
+                
+                # JOIN数の具体的な増加を解析
+                import re
+                join_match = re.search(r'(\d+)\s*→\s*(\d+)', detail_str)
+                if join_match:
+                    original_joins = int(join_match.group(1))
+                    optimized_joins = int(join_match.group(2))
+                    join_increase_ratio = optimized_joins / original_joins if original_joins > 0 else float('inf')
+                    
+                    degradation_analysis['analysis_details']['original_joins'] = original_joins
+                    degradation_analysis['analysis_details']['optimized_joins'] = optimized_joins
+                    degradation_analysis['analysis_details']['join_increase_ratio'] = join_increase_ratio
+                    
+                    if join_increase_ratio > 1.5:  # 50%以上のJOIN増加
+                        degradation_analysis['fix_instructions'].extend([
+                            "BROADCASTヒントの過剰適用を削減してください",
+                            "元のJOIN順序を尊重し、大幅な構造変更を避けてください",
+                            "不要なサブクエリ化によるJOIN重複を防いでください",
+                            "CTE展開によるJOIN増加を避け、元の構造を保持してください"
+                        ])
+                
+            # 総実行コスト悪化
+            elif '総実行コスト悪化' in detail_str or 'コスト' in detail_str:
+                if degradation_analysis['primary_cause'] == 'unknown':
+                    degradation_analysis['primary_cause'] = 'cost_increase'
+                degradation_analysis['specific_issues'].append('総実行コストの悪化')
+                degradation_analysis['fix_instructions'].extend([
+                    "BROADCASTヒントの適用対象を30MB以下の小テーブルに限定してください",
+                    "大きなテーブルへのBROADCAST適用を避けてください",
+                    "REPARTITIONヒントの配置位置を見直してください"
+                ])
+            
+            # メモリ使用量悪化
+            elif 'メモリ使用量悪化' in detail_str or 'メモリ' in detail_str:
+                if degradation_analysis['primary_cause'] == 'unknown':
+                    degradation_analysis['primary_cause'] = 'memory_increase'
+                degradation_analysis['specific_issues'].append('メモリ使用量の悪化')
+                degradation_analysis['fix_instructions'].extend([
+                    "大きなテーブルのBROADCAST適用を削除してください",
+                    "メモリ効率的なJOIN戦略を選択してください",
+                    "中間結果のサイズを削減してください"
+                ])
+        
+        # 🔍 EXPLAIN COST分析による詳細原因特定（利用可能な場合）
+        if original_explain_cost and optimized_explain_cost:
+            cost_analysis = analyze_explain_cost_differences(original_explain_cost, optimized_explain_cost)
+            degradation_analysis['analysis_details']['explain_cost_analysis'] = cost_analysis
+            
+            # BROADCAST関連の問題検出
+            if cost_analysis.get('broadcast_issues'):
+                degradation_analysis['fix_instructions'].extend([
+                    "検出されたBROADCAST問題を修正してください",
+                    "適切なサイズのテーブルのみBROADCAST対象としてください"
+                ])
+        
+        # 原因が特定できない場合のフォールバック
+        if degradation_analysis['primary_cause'] == 'unknown':
+            degradation_analysis['primary_cause'] = 'optimization_backfire'
+            degradation_analysis['fix_instructions'].extend([
+                "最適化アプローチを保守的に変更してください",
+                "元のクエリ構造をより多く保持してください",
+                "ヒント句の適用を最小限に抑えてください"
+            ])
+        
+        # 重複する修正指示を削除
+        degradation_analysis['fix_instructions'] = list(set(degradation_analysis['fix_instructions']))
+        
+    except Exception as e:
+        degradation_analysis['primary_cause'] = 'analysis_error'
+        degradation_analysis['specific_issues'] = [f"分析エラー: {str(e)}"]
+        degradation_analysis['fix_instructions'] = [
+            "保守的な最適化アプローチを使用してください",
+            "元のクエリ構造を最大限保持してください"
+        ]
+    
+    return degradation_analysis
+
+
+def analyze_explain_cost_differences(original_cost: str, optimized_cost: str) -> Dict[str, Any]:
+    """
+    EXPLAIN COST結果の差分分析で悪化原因を特定
+    """
+    analysis = {
+        'broadcast_issues': False,
+        'join_strategy_changes': [],
+        'size_estimation_problems': [],
+        'plan_structure_changes': []
+    }
+    
+    try:
+        import re
+        
+        # BROADCAST関連の問題検出
+        original_broadcasts = len(re.findall(r'broadcast', original_cost.lower()))
+        optimized_broadcasts = len(re.findall(r'broadcast', optimized_cost.lower()))
+        
+        if optimized_broadcasts > original_broadcasts * 2:  # BROADCAST使用量が2倍以上増加
+            analysis['broadcast_issues'] = True
+            analysis['join_strategy_changes'].append(f"BROADCAST使用が大幅増加: {original_broadcasts} → {optimized_broadcasts}")
+        
+        # JOIN戦略の変化検出
+        original_join_types = set(re.findall(r'(\w+)Join', original_cost))
+        optimized_join_types = set(re.findall(r'(\w+)Join', optimized_cost))
+        
+        if optimized_join_types != original_join_types:
+            analysis['join_strategy_changes'].append(f"JOIN戦略変化: {original_join_types} → {optimized_join_types}")
+        
+        # プラン構造の複雑化検出
+        original_plan_depth = original_cost.count('+-')
+        optimized_plan_depth = optimized_cost.count('+-')
+        
+        if optimized_plan_depth > original_plan_depth * 1.3:  # プラン深度が30%以上増加
+            analysis['plan_structure_changes'].append(f"実行プラン複雑化: 深度 {original_plan_depth} → {optimized_plan_depth}")
+        
+    except Exception as e:
+        analysis['analysis_error'] = str(e)
+    
+    return analysis
+
+
+def execute_iterative_optimization_with_degradation_analysis(original_query: str, analysis_result: str, metrics: Dict[str, Any], max_optimization_attempts: int = 3) -> Dict[str, Any]:
+    """
+    反復的最適化とパフォーマンス悪化分析
+    最大3回まで悪化原因を分析して再最適化を試行し、改善されない場合は元クエリを使用
+    """
+    from datetime import datetime
+    
+    print(f"\n🚀 反復的最適化プロセス開始（最大{max_optimization_attempts}回の改善試行）")
+    print("=" * 70)
+    
+    optimization_attempts = []
+    original_query_for_explain = original_query  # 元クエリの保持
+    
+    for attempt_num in range(1, max_optimization_attempts + 1):
+        print(f"\n🔄 最適化試行 {attempt_num}/{max_optimization_attempts}")
+        print("-" * 50)
+        
+        # 前回の試行結果に基づく修正指示を生成
+        fix_instructions = ""
+        if attempt_num > 1:
+            previous_attempt = optimization_attempts[-1]
+            if previous_attempt.get('degradation_analysis'):
+                degradation_analysis = previous_attempt['degradation_analysis']
+                fix_instructions = "\n".join([
+                    f"【前回の悪化原因: {degradation_analysis['primary_cause']}】",
+                    f"【信頼度: {degradation_analysis['confidence_level']}】",
+                    "【修正指示】"
+                ] + degradation_analysis['fix_instructions'])
+                
+                print(f"🔧 悪化原因分析結果: {degradation_analysis['primary_cause']}")
+                print(f"📊 信頼度: {degradation_analysis['confidence_level']}")
+                print(f"💡 修正指示: {len(degradation_analysis['fix_instructions'])}項目")
+        
+        # 最適化クエリ生成（初回 or 修正版）
+        if attempt_num == 1:
+            print("🤖 初回最適化クエリ生成")
+            optimized_query = generate_optimized_query_with_llm(original_query, analysis_result, metrics)
+        else:
+            print(f"🔧 修正版最適化クエリ生成（試行{attempt_num}）")
+            # 修正指示付きで再最適化
+            enhanced_analysis = f"{analysis_result}\n\n【前回の悪化分析に基づく修正指示】\n{fix_instructions}"
+            optimized_query = generate_optimized_query_with_error_feedback(original_query, enhanced_analysis, metrics, fix_instructions, optimization_attempts[-1]['optimized_query'] if optimization_attempts else "")
+        
+        # LLMエラーチェック
+        if isinstance(optimized_query, str) and optimized_query.startswith("LLM_ERROR:"):
+            print(f"❌ 最適化試行{attempt_num}でLLMエラーが発生")
+            optimization_attempts.append({
+                'attempt': attempt_num,
+                'status': 'llm_error',
+                'error': optimized_query[10:],
+                'optimized_query': None
+            })
+            continue
+        
+        # クエリ抽出
+        if isinstance(optimized_query, list):
+            optimized_query_str = extract_main_content_from_thinking_response(optimized_query)
+        else:
+            optimized_query_str = str(optimized_query)
+        
+        extracted_sql = extract_sql_from_llm_response(optimized_query_str)
+        current_query = extracted_sql if extracted_sql else original_query
+        
+        # EXPLAIN実行と構文チェック
+        explain_result = execute_explain_with_retry_logic(current_query, analysis_result, metrics, max_retries=2)
+        
+        if explain_result['final_status'] != 'success':
+            print(f"⚠️ 試行{attempt_num}: EXPLAIN実行失敗")
+            optimization_attempts.append({
+                'attempt': attempt_num,
+                'status': 'explain_failed',
+                'error': explain_result.get('error_details', 'Unknown error'),
+                'optimized_query': current_query
+            })
+            continue
+        
+        # パフォーマンス比較実行
+        print(f"🔍 試行{attempt_num}: パフォーマンス悪化検出を実行")
+        
+        # 元クエリのEXPLAIN COST取得
+        original_explain_cost_result = execute_explain_and_save_to_file(original_query, "original_performance_check")
+        
+        # 最適化クエリのEXPLAIN COST取得
+        optimized_explain_cost_result = execute_explain_and_save_to_file(current_query, f"optimized_attempt_{attempt_num}")
+        
+        performance_comparison = None
+        degradation_analysis = None
+        
+        if ('explain_cost_file' in original_explain_cost_result and 
+            'explain_cost_file' in optimized_explain_cost_result and
+            'error_file' not in original_explain_cost_result and
+            'error_file' not in optimized_explain_cost_result):
+            
+            try:
+                # EXPLAIN COST内容を読み込み
+                with open(original_explain_cost_result['explain_cost_file'], 'r', encoding='utf-8') as f:
+                    original_cost_content = f.read()
+                
+                with open(optimized_explain_cost_result['explain_cost_file'], 'r', encoding='utf-8') as f:
+                    optimized_cost_content = f.read()
+                
+                # パフォーマンス比較実行
+                performance_comparison = compare_query_performance(original_cost_content, optimized_cost_content)
+                
+                if performance_comparison['performance_degradation_detected']:
+                    print(f"🚨 試行{attempt_num}: パフォーマンス悪化を検出")
+                    
+                    # 悪化原因分析
+                    degradation_analysis = analyze_degradation_causes(performance_comparison, original_cost_content, optimized_cost_content)
+                    
+                    print(f"   原因: {degradation_analysis['primary_cause']}")
+                    print(f"   詳細: {', '.join(degradation_analysis['specific_issues'])}")
+                    
+                    optimization_attempts.append({
+                        'attempt': attempt_num,
+                        'status': 'performance_degraded',
+                        'optimized_query': current_query,
+                        'performance_comparison': performance_comparison,
+                        'degradation_analysis': degradation_analysis,
+                        'cost_ratio': performance_comparison['total_cost_ratio'],
+                        'memory_ratio': performance_comparison['memory_usage_ratio']
+                    })
+                    
+                    # 最後の試行でない場合は次の改善を試行
+                    if attempt_num < max_optimization_attempts:
+                        print(f"🔄 試行{attempt_num + 1}で改善を試みます")
+                        continue
+                    else:
+                        print(f"❌ 最大試行回数({max_optimization_attempts})に到達、元クエリを使用")
+                        break
+                        
+                else:
+                    print(f"✅ 試行{attempt_num}: パフォーマンス改善を確認！")
+                    optimization_attempts.append({
+                        'attempt': attempt_num,
+                        'status': 'success',
+                        'optimized_query': current_query,
+                        'performance_comparison': performance_comparison,
+                        'cost_ratio': performance_comparison['total_cost_ratio'],
+                        'memory_ratio': performance_comparison['memory_usage_ratio']
+                    })
+                    
+                    # 成功: 最適化クエリとレポートを保存
+                    saved_files = save_optimized_sql_files(
+                        original_query_for_explain,
+                        current_query,
+                        metrics,
+                        analysis_result,
+                        optimized_query_str,
+                        performance_comparison
+                    )
+                    
+                    return {
+                        'final_status': 'optimization_success',
+                        'final_query': current_query,
+                        'successful_attempt': attempt_num,
+                        'total_attempts': attempt_num,
+                        'optimization_attempts': optimization_attempts,
+                        'performance_comparison': performance_comparison,
+                        'saved_files': saved_files
+                    }
+            
+            except Exception as e:
+                print(f"⚠️ 試行{attempt_num}: パフォーマンス比較でエラー: {str(e)}")
+                optimization_attempts.append({
+                    'attempt': attempt_num,
+                    'status': 'comparison_error',
+                    'error': str(e),
+                    'optimized_query': current_query
+                })
+                continue
+        
+        else:
+            print(f"⚠️ 試行{attempt_num}: EXPLAIN COST取得失敗、構文的に正常な最適化クエリを使用")
+            optimization_attempts.append({
+                'attempt': attempt_num,
+                'status': 'explain_cost_failed',
+                'optimized_query': current_query,
+                'note': 'EXPLAIN COST comparison skipped due to execution failure'
+            })
+            
+            # EXPLAIN COSTが取得できない場合でも構文的に正常なクエリは使用可能
+            saved_files = save_optimized_sql_files(
+                original_query_for_explain,
+                current_query,
+                metrics,
+                analysis_result,
+                optimized_query_str,
+                None  # performance_comparison
+            )
+            
+            return {
+                'final_status': 'partial_success',
+                'final_query': current_query,
+                'successful_attempt': attempt_num,
+                'total_attempts': attempt_num,
+                'optimization_attempts': optimization_attempts,
+                'saved_files': saved_files,
+                'note': 'Performance comparison unavailable but query is syntactically valid'
+            }
+    
+    # 全ての最適化試行が失敗または悪化: 元クエリを使用
+    print(f"\n🔄 全{max_optimization_attempts}回の最適化試行が完了、元クエリを使用")
+    
+    # 最良の試行結果があれば詳細をレポートに含める
+    failure_summary = []
+    for attempt in optimization_attempts:
+        if attempt['status'] == 'performance_degraded':
+            failure_summary.append(f"試行{attempt['attempt']}: {attempt['degradation_analysis']['primary_cause']} (コスト比: {attempt['cost_ratio']:.2f})")
+        elif attempt['status'] == 'llm_error':
+            failure_summary.append(f"試行{attempt['attempt']}: LLMエラー")
+        elif attempt['status'] == 'explain_failed':
+            failure_summary.append(f"試行{attempt['attempt']}: EXPLAIN実行失敗")
+    
+    failure_report = f"""# ❌ 反復的最適化が全て失敗のため、元のクエリを使用
+
+## 最適化試行結果
+
+{chr(10).join(failure_summary) if failure_summary else "全ての試行でエラーが発生"}
+
+## 最終判断
+
+{max_optimization_attempts}回の最適化試行を実行しましたが、いずれも元クエリより性能が悪化するか、エラーが発生したため、
+安全性を優先して元のクエリを使用します。
+
+## 元のクエリ
+
+```sql
+{original_query}
+```
+
+## 推奨事項
+
+- データ量やテーブル統計情報を確認してください
+- より詳細なEXPLAIN情報を取得して手動最適化を検討してください  
+- Liquid Clusteringやテーブル統計の更新を検討してください
+"""
+    
+    saved_files = save_optimized_sql_files(
+        original_query_for_explain,
+        failure_report,
+        metrics,
+        analysis_result,
+        "",  # llm_response
+        None  # performance_comparison
+    )
+    
+    return {
+        'final_status': 'optimization_failed',
+        'final_query': original_query,
+        'total_attempts': len(optimization_attempts),
+        'optimization_attempts': optimization_attempts,
+        'saved_files': saved_files,
+        'fallback_reason': 'All optimization attempts resulted in performance degradation or errors'
+    }
+
+
 def execute_explain_with_retry_logic(original_query: str, analysis_result: str, metrics: Dict[str, Any], max_retries: int = 2) -> Dict[str, Any]:
     """
-    EXPLAIN実行とエラー修正の再試行ロジック
+    EXPLAIN実行とエラー修正の再試行ロジック（構文エラー専用）
     最大2回まで自動修正を試行し、失敗時は元クエリを使用
     """
     from datetime import datetime
@@ -11181,21 +11611,37 @@ elif original_query_for_explain and original_query_for_explain.strip():
             if 'plan_lines' in original_explain_result:
                 print(f"📊 オリジナルクエリ実行プラン行数: {original_explain_result['plan_lines']:,}")
             
-            # 🚀 ステップ2: 新しい統合処理: 設定可能な最大試行回数での自動エラー修正
-            print("\n📋 ステップ2: LLM最適化 & 検証EXPLAIN実行（最大3回自動エラー修正）")
+            # 🚀 ステップ2: 新しい反復的最適化処理: 悪化原因分析による最大3回の改善試行
+            print("\n📋 ステップ2: 反復的LLM最適化 & パフォーマンス悪化分析（最大3回改善試行）")
             print("-" * 60)
-            max_retries_setting = globals().get('MAX_RETRIES', 2)
-            retry_result = execute_explain_with_retry_logic(
+            max_optimization_attempts = globals().get('MAX_OPTIMIZATION_ATTEMPTS', 3)
+            retry_result = execute_iterative_optimization_with_degradation_analysis(
                 original_query_for_explain, 
                 analysis_result_str, 
                 current_metrics, 
-                max_retries=max_retries_setting
+                max_optimization_attempts=max_optimization_attempts
             )            
             # 結果の表示
             print(f"\n📊 最終結果: {retry_result['final_status']}")
             print(f"🔄 総試行回数: {retry_result['total_attempts']}")
             
-            if retry_result['final_status'] == 'success':
+            # 反復最適化の試行詳細表示
+            if 'optimization_attempts' in retry_result:
+                attempts = retry_result['optimization_attempts']
+                print(f"📈 最適化試行詳細: {len(attempts)}回")
+                for attempt in attempts:
+                    status_icon = {
+                        'success': '✅',
+                        'performance_degraded': '🚨',
+                        'llm_error': '❌',
+                        'explain_failed': '⚠️',
+                        'comparison_error': '🔧'
+                    }.get(attempt['status'], '❓')
+                    print(f"   {status_icon} 試行{attempt['attempt']}: {attempt['status']}")
+                    if 'cost_ratio' in attempt:
+                        print(f"      💰 コスト比: {attempt['cost_ratio']:.2f}倍")
+            
+            if retry_result['final_status'] in ['optimization_success', 'partial_success']:
                 print("✅ 最適化クエリのEXPLAIN実行に成功しました！")
                 
                 # 成功時のファイル情報表示
@@ -11226,6 +11672,27 @@ elif original_query_for_explain and original_query_for_explain.strip():
                 for file_type, filename in saved_files.items():
                     print(f"   📄 {file_type}: {filename}")
                     
+            elif retry_result['final_status'] == 'optimization_failed':
+                print("🚨 全ての最適化試行が失敗または悪化のため、元クエリを使用しました")
+                fallback_reason = retry_result.get('fallback_reason', 'Unknown reason')
+                print(f"🔧 失敗理由: {fallback_reason}")
+                
+                # 失敗詳細の表示
+                if 'optimization_attempts' in retry_result:
+                    attempts = retry_result['optimization_attempts']
+                    degraded_count = sum(1 for a in attempts if a['status'] == 'performance_degraded')
+                    error_count = sum(1 for a in attempts if a['status'] in ['llm_error', 'explain_failed'])
+                    
+                    if degraded_count > 0:
+                        print(f"📊 パフォーマンス悪化: {degraded_count}回")
+                    if error_count > 0:
+                        print(f"❌ エラー発生: {error_count}回")
+                
+                print("💡 推奨事項:")
+                print("   - テーブル統計情報の更新を検討してください")
+                print("   - より詳細なEXPLAIN情報で手動最適化を検討してください")
+                print("   - データ量やクエリ複雑度を確認してください")
+            
             elif retry_result['final_status'] == 'fallback_to_original':
                 print("⚠️ 最適化クエリでエラーが継続したため、元クエリを使用しました")
             
