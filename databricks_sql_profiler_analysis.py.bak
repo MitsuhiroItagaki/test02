@@ -10474,9 +10474,7 @@ def execute_explain_with_retry_logic(original_query: str, analysis_result: str, 
                         original_query,
                         f"# ⚠️ パフォーマンス比較エラーのため安全性を優先して元クエリを使用\n\n## エラー詳細\n{str(e)}\n\n## 元のクエリ\n```sql\n{original_query}\n```",
                         metrics,
-                        analysis_result,
-                        "",  # llm_response
-                        None  # performance_comparison
+                        analysis_result
                     )
                     
                     return {
@@ -10541,9 +10539,7 @@ def execute_explain_with_retry_logic(original_query: str, analysis_result: str, 
                     original_query, 
                     f"# 🚨 最適化クエリのEXPLAIN実行が{max_retries}回とも失敗したため、元クエリを使用\n\n## 最後のエラー情報\n{error_message}\n\n## 元のクエリ\n```sql\n{original_query}\n```",
                     metrics,
-                    analysis_result,
-                    "",  # llm_response
-                    None  # performance_comparison
+                    analysis_result
                 )
                 
                 # 失敗時のログ記録
@@ -10621,9 +10617,7 @@ def execute_explain_with_retry_logic(original_query: str, analysis_result: str, 
                     original_query,
                     f"# ❌ エラー修正時もLLMエラーが発生したため、元のクエリを使用\n\n## エラー修正時のエラー詳細\n{corrected_query[10:]}\n\n## 元のクエリ\n```sql\n{original_query}\n```",
                     metrics,
-                    analysis_result,
-                    "",  # llm_response
-                    None  # performance_comparison
+                    analysis_result
                 )
                 
                 return {
