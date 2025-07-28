@@ -11374,32 +11374,13 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
             else:
                 print("❌ EXPLAIN結果も不足のため、パフォーマンス評価不可")
                 performance_comparison = None
-                
-        # 🚨 緊急修正: パフォーマンス評価が完全に失敗した場合のハンドリング
-        if performance_comparison is None:
-            print(f"🚨 試行{attempt_num}: パフォーマンス評価が不可能なため、次の試行に進みます")
-            
-            optimization_attempts.append({
-                'attempt': attempt_num,
-                'status': 'performance_evaluation_failed',
-                'optimized_query': current_query,
-                'performance_comparison': None,
-                'error': 'EXPLAIN COST実行失敗またはフォールバック評価失敗',
-                'cost_ratio': None,
-                'memory_ratio': None
-            })
-            
-            # 最後の試行でない場合は次の改善を試行
-            if attempt_num < max_optimization_attempts:
-                print(f"🔄 試行{attempt_num + 1}でパフォーマンス評価の再試行を行います")
-                continue
-            else:
-                print(f"❌ 最大試行回数({max_optimization_attempts})に到達、元クエリを使用")
-                break
         
-        elif (original_cost_success and optimized_cost_success):
+        # 🚨 緊急修正: ロジック順序を修正（EXPLAIN COST成功判定を先に実行）
+        if (original_cost_success and optimized_cost_success):
             
             try:
+                print(f"🎯 両方のEXPLAIN COST成功 → パフォーマンス比較を実行")
+                
                 # EXPLAIN COST内容を読み込み
                 with open(original_explain_cost_result['explain_cost_file'], 'r', encoding='utf-8') as f:
                     original_cost_content = f.read()
@@ -11407,8 +11388,20 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                 with open(optimized_explain_cost_result['explain_cost_file'], 'r', encoding='utf-8') as f:
                     optimized_cost_content = f.read()
                 
+                print(f"   📊 元クエリCOST内容長: {len(original_cost_content)} 文字")
+                print(f"   🔧 最適化クエリCOST内容長: {len(optimized_cost_content)} 文字")
+                
                 # パフォーマンス比較実行
+                print(f"🔍 compare_query_performance 実行中...")
                 performance_comparison = compare_query_performance(original_cost_content, optimized_cost_content)
+                print(f"✅ compare_query_performance 完了: {performance_comparison is not None}")
+                
+                if performance_comparison:
+                    print(f"   📊 significant_improvement_detected: {performance_comparison.get('significant_improvement_detected', 'UNKNOWN')}")
+                    print(f"   📊 performance_degradation_detected: {performance_comparison.get('performance_degradation_detected', 'UNKNOWN')}")
+                    print(f"   📊 is_optimization_beneficial: {performance_comparison.get('is_optimization_beneficial', 'UNKNOWN')}")
+                else:
+                    print(f"❌ performance_comparison is None!")
                 
                 # 🚨 厳格判定：明確な改善がない場合は再試行
                 if not performance_comparison.get('significant_improvement_detected', False):
@@ -11475,7 +11468,12 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                     }
             
             except Exception as e:
-                print(f"⚠️ 試行{attempt_num}: パフォーマンス比較でエラー: {str(e)}")
+                print(f"❌ 試行{attempt_num}: パフォーマンス比較でエラー: {str(e)}")
+                print(f"   📊 エラータイプ: {type(e).__name__}")
+                if hasattr(e, '__traceback__'):
+                    import traceback
+                    print(f"   📄 スタックトレース: {traceback.format_exc()}")
+                print(f"🚨 このエラーが「パフォーマンス評価が不可能」の原因です！")
                 optimization_attempts.append({
                     'attempt': attempt_num,
                     'status': 'comparison_error',
@@ -11483,6 +11481,28 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                     'optimized_query': current_query
                 })
                 continue
+        
+        # 🚨 緊急修正: パフォーマンス評価が完全に失敗した場合のハンドリング（ロジック順序修正後）
+        elif performance_comparison is None:
+            print(f"🚨 試行{attempt_num}: パフォーマンス評価が不可能なため、次の試行に進みます")
+            
+            optimization_attempts.append({
+                'attempt': attempt_num,
+                'status': 'performance_evaluation_failed',
+                'optimized_query': current_query,
+                'performance_comparison': None,
+                'error': 'EXPLAIN COST実行失敗またはフォールバック評価失敗',
+                'cost_ratio': None,
+                'memory_ratio': None
+            })
+            
+            # 最後の試行でない場合は次の改善を試行
+            if attempt_num < max_optimization_attempts:
+                print(f"🔄 試行{attempt_num + 1}でパフォーマンス評価の再試行を行います")
+                continue
+            else:
+                print(f"❌ 最大試行回数({max_optimization_attempts})に到達、元クエリを使用")
+                break
         
         else:
             print(f"⚠️ 試行{attempt_num}: EXPLAIN COST取得失敗、構文的に正常な最適化クエリを使用")

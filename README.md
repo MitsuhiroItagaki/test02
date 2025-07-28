@@ -696,6 +696,69 @@ print(f"   📄 スタックトレース: {traceback.format_exc()}")
 - ✅ エラー原因の詳細可視化
 - ✅ 「パフォーマンス評価が不可能」エラーの根本解決
 
+#### 🚨 LOGIC ORDER CRITICAL FIX (v2.7.9)
+
+**ユーザー指摘**:
+```
+❌ おかしくないですか？
+🔍 EXPLAIN COST成功判定:
+   📊 元クエリ: ✅ 成功
+   🔧 最適化クエリ: ✅ 成功
+→ 🚨 試行3: パフォーマンス評価が不可能なため、次の試行に進みます
+```
+
+**確実に論理的矛盾**:
+両方のEXPLAIN COSTが成功しているのに、なぜパフォーマンス評価が失敗するのか？
+
+**根本原因発見**:
+**致命的なロジック順序エラー**があった：
+
+```python
+# 🚨 間違った順序（修正前）
+if performance_comparison is None:          # ← 先にNoneチェック
+    print("パフォーマンス評価が不可能")    
+elif (original_cost_success and optimized_cost_success):  # ← 後で比較実行
+    performance_comparison = compare_query_performance()
+
+# ✅ 正しい順序（修正後）  
+if (original_cost_success and optimized_cost_success):    # ← 先に比較実行
+    performance_comparison = compare_query_performance()
+elif performance_comparison is None:                      # ← 後でNoneチェック
+    print("パフォーマンス評価が不可能")
+```
+
+**問題の詳細**:
+1. **`performance_comparison`は最初`None`で初期化**
+2. **最初に`if performance_comparison is None:`が実行** → 常に`True`
+3. **`elif`以降の実際の比較処理が実行されない**
+4. **結果**: 正常に成功しているのにエラーメッセージが表示
+
+**緊急修正内容**:
+
+**1. 🎯 ロジック順序の完全修正**:
+```python
+# 先に実際の処理を実行
+if (original_cost_success and optimized_cost_success):
+    # パフォーマンス比較実行
+    performance_comparison = compare_query_performance()
+# 最後にNoneチェック
+elif performance_comparison is None:
+    print("パフォーマンス評価が不可能")
+```
+
+**2. 🔍 詳細デバッグ出力追加**:
+```python
+print(f"🎯 両方のEXPLAIN COST成功 → パフォーマンス比較を実行")
+print(f"🔍 compare_query_performance 実行中...")
+print(f"✅ compare_query_performance 完了: {performance_comparison is not None}")
+```
+
+**修正効果**:
+- ✅ 論理的矛盾の完全解決
+- ✅ EXPLAIN COST成功時の確実なパフォーマンス比較実行
+- ✅ 「おかしな動作」の根本的修正
+- ✅ ロジックフローの透明性向上
+
 ### 🚨 LLMトークン制限エラーの解決
 
 #### **発生パターン**
