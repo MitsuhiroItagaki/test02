@@ -65,7 +65,7 @@
 # ノートブック環境用のファイルパス設定（以下の中から選択してください）
 
 # オプション1: チューニング前プランファイル（推奨）
-JSON_FILE_PATH = '/Volumes/main/base/mitsuhiro_vol/チューニング前プランファイル.json'
+JSON_FILE_PATH = '/Workspace/Shared/AutoSQLTuning/Query2.json'
 
 # オプション2: 他のJSONファイルを使用する場合は、以下のコメントアウトを解除して編集
 # JSON_FILE_PATH = '/Volumes/main/base/mitsuhiro_vol/nophoton.json'
@@ -85,7 +85,7 @@ OUTPUT_LANGUAGE = 'ja'
 EXPLAIN_ENABLED = 'Y'
 
 # 🐛 デバッグモード設定（DEBUG_ENABLED: 'Y' = 中間ファイル保持, 'N' = 最終ファイルのみ保持）
-DEBUG_ENABLED = 'N'
+DEBUG_ENABLED = 'Y'
 
 # 🧠 構造化抽出設定（STRUCTURED_EXTRACTION_ENABLED: 'Y' = 構造化抽出使用, 'N' = 従来の切り詰め使用）
 # Physical PlanとEXPLAIN COSTの処理方式を制御
