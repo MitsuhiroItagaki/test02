@@ -403,6 +403,60 @@ if performance_comparison is None:
 - ✅ パフォーマンス評価失敗時の適切な次試行移行
 - ✅ 堅牢なエラーハンドリングによる完全性保証
 
+#### 🚨 セル45エラー修正機能追加 (v2.7.3.6)
+
+**ユーザー報告の継続問題**:
+```
+❌ AMBIGUOUS_REFERENCEと出ていますが、Error occurred during query planningがあればエラーなのは明白
+❌ 詳細メッセージに応じたプロンプト生成で対応すべき
+❌ MAX_RETRIES = 2もデフォルト３にしてください
+```
+
+**根本原因分析**:
+1. **execute_iterative_optimization_with_degradation_analysis がエラー修正機能を持っていない**
+2. **エラー検出されても execute_explain_with_retry_logic が呼ばれない**
+3. **具体的エラーメッセージに応じた修正指示が不足**
+
+**完全修正内容**:
+
+**1. 🔧 反復最適化プロセスでのエラー修正機能追加**:
+```python
+if 'error_file' in optimized_explain_cost_result:
+    # 🚨 CRITICAL FIX: エラー検出時は即座にLLM修正を実行
+    corrected_query = generate_optimized_query_with_error_feedback(
+        original_query, analysis_result, metrics, error_message, current_query
+    )
+    # 修正クエリで再度EXPLAIN実行
+    optimized_explain_cost_result = execute_explain_and_save_to_file(
+        current_query, f"optimized_attempt_{attempt_num}_corrected"
+    )
+```
+
+**2. 🎯 詳細エラーメッセージ解析による専用修正指示**:
+```python
+def generate_specific_error_guidance(error_message: str) -> str:
+    if "AMBIGUOUS_REFERENCE" in error_message.upper():
+        # 具体的カラム名を抽出して専用修正指示生成
+        ambiguous_column = extract_column_from_error(error_message)
+        return f"カラム `{ambiguous_column}` の全参照にテーブルエイリアス明示が必要"
+    elif "UNRESOLVED_COLUMN" in error_message.upper():
+        # 解決不能カラムに対する具体的指示
+    elif "PARSE_SYNTAX_ERROR" in error_message.upper():
+        # 構文エラー最優先修正指示
+```
+
+**3. ⚙️ デフォルト設定変更**:
+```python
+MAX_RETRIES = 3  # 2 → 3 に変更
+```
+
+**修正効果**:
+- ✅ `execute_iterative_optimization_with_degradation_analysis` でエラー検出時に即座にLLM修正実行
+- ✅ 具体的エラーメッセージ（`[AMBIGUOUS_REFERENCE] Reference 'ss_item_sk' is ambiguous`）に基づく専用修正指示
+- ✅ エラー修正後の再評価により適切なパフォーマンス比較継続
+- ✅ MAX_RETRIES = 3 による十分な修正試行回数確保
+- ✅ `Error occurred during query planning` の確実なエラー修正実行
+
 ### 🚨 LLMトークン制限エラーの解決
 
 #### **発生パターン**

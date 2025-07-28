@@ -98,7 +98,7 @@ STRUCTURED_EXTRACTION_ENABLED = 'Y'
 # - 1回目: 初回生成クエリでEXPLAIN実行
 # - 2回目以降: エラー情報をLLMに再入力して修正クエリを生成・再実行
 # - 最大試行回数に達した場合: 元の動作可能クエリを使用してファイル生成
-MAX_RETRIES = 2
+MAX_RETRIES = 3
 
 # 🚀 反復的最適化の最大試行回数設定（MAX_OPTIMIZATION_ATTEMPTS: デフォルト3回）
 # パフォーマンス悪化を検出した場合の改善試行回数
@@ -10583,6 +10583,49 @@ def generate_optimized_query_with_error_feedback(original_query: str, analysis_r
 - ヒント句の配置ルールは厳守（BROADCASTはメインクエリSELECT直後等）
 """
 
+    # 🚨 NEW: エラーメッセージ解析による詳細修正指示生成
+    def generate_specific_error_guidance(error_message: str) -> str:
+        """具体的なエラーメッセージに基づいた詳細修正指示を生成"""
+        guidance = ""
+        
+        if "AMBIGUOUS_REFERENCE" in error_message.upper():
+            # AMBIGUOUS_REFERENCEエラーの具体的対処
+            import re
+            ambiguous_column_match = re.search(r'Reference `([^`]+)` is ambiguous', error_message)
+            if ambiguous_column_match:
+                ambiguous_column = ambiguous_column_match.group(1)
+                guidance += f"""
+🎯 **AMBIGUOUS_REFERENCE 専用修正指示**: 
+- **問題**: カラム `{ambiguous_column}` が複数テーブルに存在
+- **必須修正**: 全ての `{ambiguous_column}` 参照にテーブルエイリアスを明示
+- **修正例**: `{ambiguous_column}` → `table_alias.{ambiguous_column}`
+- **重要**: WHERE句、SELECT句、JOIN句全てで明示的修飾が必要
+"""
+            
+        if "UNRESOLVED_COLUMN" in error_message.upper():
+            # UNRESOLVED_COLUMNエラーの具体的対処
+            import re
+            unresolved_match = re.search(r'column.*`([^`]+)`', error_message)
+            if unresolved_match:
+                unresolved_column = unresolved_match.group(1)
+                guidance += f"""
+🎯 **UNRESOLVED_COLUMN 専用修正指示**:
+- **問題**: カラム `{unresolved_column}` が見つからない
+- **確認事項**: テーブルエイリアス、スペルミス、スコープ
+- **修正例**: 正しいテーブル修飾、存在するカラム名への変更
+"""
+        
+        if "PARSE_SYNTAX_ERROR" in error_message.upper():
+            guidance += f"""
+🎯 **PARSE_SYNTAX_ERROR 専用修正指示**:
+- **重要**: 構文エラー最優先修正（カンマ抜け、エイリアス重複等）
+- **確認**: SELECT句のカンマ、FROM句の構文、エイリアス定義
+"""
+            
+        return guidance
+    
+    specific_guidance = generate_specific_error_guidance(error_info)
+
     error_feedback_prompt = f"""
 あなたはDatabricksのSQLパフォーマンス最適化とエラー修正の専門家です。
 
@@ -10590,6 +10633,7 @@ def generate_optimized_query_with_error_feedback(original_query: str, analysis_r
 
 【🚨 発生したエラー情報】
 {error_info}
+{specific_guidance}
 
 【元の分析対象クエリ】
 ```sql
@@ -11244,9 +11288,54 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                 print(f"📄 エラー詳細: {original_explain_cost_result['error_file']}")
         
         if not optimized_cost_success:
-            print("⚠️ 最適化クエリのEXPLAIN COST実行失敗: フォールバック評価を実行")
+            print("⚠️ 最適化クエリのEXPLAIN COST実行失敗: エラー修正を試行")
             if 'error_file' in optimized_explain_cost_result:
                 print(f"📄 エラー詳細: {optimized_explain_cost_result['error_file']}")
+                
+                # 🚨 CRITICAL FIX: エラー検出時は即座にLLM修正を実行
+                print("🔧 LLMによるエラー修正を実行中...")
+                error_message = optimized_explain_cost_result.get('error_message', 'Unknown error')
+                
+                # エラー修正のためのLLM呼び出し
+                corrected_query = generate_optimized_query_with_error_feedback(
+                    original_query,
+                    analysis_result, 
+                    metrics,
+                    error_message,
+                    current_query  # 現在のクエリ（ヒント付き）を渡す
+                )
+                
+                # LLMエラーチェック
+                if isinstance(corrected_query, str) and corrected_query.startswith("LLM_ERROR:"):
+                    print("❌ LLM修正でエラーが発生: フォールバック評価を実行")
+                else:
+                    # thinking_enabled対応
+                    if isinstance(corrected_query, list):
+                        corrected_query_str = extract_main_content_from_thinking_response(corrected_query)
+                    else:
+                        corrected_query_str = str(corrected_query)
+                    
+                    # SQLクエリ部分のみを抽出
+                    extracted_sql = extract_sql_from_llm_response(corrected_query_str)
+                    if extracted_sql:
+                        current_query = extracted_sql
+                        print("✅ LLMによるエラー修正完了、修正クエリで再評価")
+                        
+                        # 修正クエリで再度EXPLAIN実行
+                        optimized_explain_cost_result = execute_explain_and_save_to_file(current_query, f"optimized_attempt_{attempt_num}_corrected")
+                        optimized_cost_success = ('explain_cost_file' in optimized_explain_cost_result and 
+                                                'error_file' not in optimized_explain_cost_result)
+                        
+                        if optimized_cost_success:
+                            print("🎯 修正クエリのEXPLAIN実行成功!")
+                        else:
+                            print("⚠️ 修正クエリでもエラー発生: フォールバック評価を実行")
+                    else:
+                        print("❌ SQLクエリの抽出に失敗: フォールバック評価を実行")
+            
+            # エラー修正後もエラーの場合、フォールバック評価を実行
+            if not optimized_cost_success:
+                print("🔄 フォールバック評価を実行")
         
         # 🚨 緊急修正: EXPLAIN COST失敗時のフォールバック パフォーマンス評価
         if not (original_cost_success and optimized_cost_success):
