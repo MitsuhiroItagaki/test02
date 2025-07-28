@@ -9760,100 +9760,10 @@ def generate_fallback_performance_section(fallback_evaluation: Dict[str, Any], l
 
 def fix_common_ambiguous_references(sql_query: str) -> str:
     """
-    一般的なAMBIGUOUS_REFERENCEエラーパターンを事前修正
-    
-    対応パターン：
-    - ss_item_sk の曖昧性: store_sales vs cross_items
-    - 共通カラム名の修正: テーブルエイリアス明示
-    - CTE内の参照曖昧性解決
+    【廃止】正規表現による修正は廃止 - LLMによる高度な修正に完全依存
     """
-    import re
-    
-    try:
-        print("🔍 AMBIGUOUS_REFERENCE一般的パターンの検出中...")
-        
-        # 修正フラグ
-        modifications = []
-        fixed_query = sql_query
-        
-        # パターン1: ss_item_sk の曖昧性修正
-        # cross_items との結合コンテキストでの ss_item_sk
-        cross_items_context_pattern = r'(\bFROM\s+[^W]*\bcross_items\b[^W]*?)\bss_item_sk\b'
-        if re.search(cross_items_context_pattern, fixed_query, re.IGNORECASE | re.DOTALL):
-            # cross_items コンテキストでは ci.ss_item_sk を使用
-            fixed_query = re.sub(
-                r'(\bJOIN\s+cross_items\s+\w+\s+ON\s+[^.]*?)ss_item_sk',
-                r'\1ci.ss_item_sk',
-                fixed_query,
-                flags=re.IGNORECASE
-            )
-            modifications.append("cross_items.ss_item_sk → ci.ss_item_sk")
-        
-        # パターン2: store_sales の ss_item_sk を明示化
-        # store_sales テーブルのエイリアス（ss）を明示
-        store_sales_pattern = r'(\bFROM\s+store_sales\s+(\w+)[^W]*?)\bss_item_sk\b'
-        store_sales_matches = re.finditer(store_sales_pattern, fixed_query, re.IGNORECASE | re.DOTALL)
-        for match in store_sales_matches:
-            alias = match.group(2)
-            if alias and alias.lower() != 'ss':
-                # エイリアスがssでない場合は修正
-                fixed_query = re.sub(
-                    r'\bss_item_sk\b',
-                    f'{alias}.ss_item_sk',
-                    fixed_query
-                )
-                modifications.append(f"ss_item_sk → {alias}.ss_item_sk")
-        
-        # パターン3: 明示的なエイリアス付けが不十分な場合の修正
-        # SELECT文内での未修飾カラム参照を検出
-        unqualified_patterns = [
-            (r'\bss_item_sk\b', 'ss.ss_item_sk'),
-            (r'\bcs_item_sk\b', 'cs.cs_item_sk'),
-            (r'\bws_item_sk\b', 'ws.ws_item_sk'),
-            (r'\bi_item_sk\b', 'i.i_item_sk'),
-            (r'\bi_brand_id\b', 'i.i_brand_id'),
-            (r'\bi_class_id\b', 'i.i_class_id'),
-            (r'\bi_category_id\b', 'i.i_category_id')
-        ]
-        
-        for pattern, replacement in unqualified_patterns:
-            if re.search(pattern, fixed_query) and not re.search(pattern.replace(r'\b', r'\w*\.'), fixed_query):
-                # 未修飾の参照があり、修飾された参照がない場合のみ修正
-                original_count = len(re.findall(pattern, fixed_query))
-                fixed_query = re.sub(pattern, replacement, fixed_query)
-                qualified_count = len(re.findall(pattern, fixed_query))
-                
-                if original_count != qualified_count:
-                    modifications.append(f"{pattern} → {replacement}")
-        
-        # パターン4: CTE内の参照修正
-        # WITH句内でのエイリアス参照の修正
-        cte_ambiguous_pattern = r'(WITH\s+\w+\s+AS\s*\([^)]*)\bss_item_sk\b([^)]*\))'
-        if re.search(cte_ambiguous_pattern, fixed_query, re.IGNORECASE | re.DOTALL):
-            fixed_query = re.sub(
-                cte_ambiguous_pattern,
-                r'\1ss.ss_item_sk\2',
-                fixed_query,
-                flags=re.IGNORECASE | re.DOTALL
-            )
-            modifications.append("CTE内のss_item_sk → ss.ss_item_sk")
-        
-        # 修正結果の出力
-        if modifications:
-            print(f"✅ AMBIGUOUS_REFERENCE修正を適用: {len(modifications)}箇所")
-            for mod in modifications[:5]:  # 最初の5個を表示
-                print(f"   📝 {mod}")
-            if len(modifications) > 5:
-                print(f"   📝 ... 他{len(modifications) - 5}箇所")
-            return fixed_query
-        else:
-            print("✅ AMBIGUOUS_REFERENCE修正の必要なし")
-            return sql_query
-            
-    except Exception as e:
-        print(f"⚠️ AMBIGUOUS_REFERENCE修正でエラー: {str(e)}")
-        print("🔄 元のクエリを返します")
-        return sql_query
+    print("🚫 正規表現による事前修正は廃止: LLMによる高度な修正に依存")
+    return sql_query
 
 
 def fix_incomplete_sql_syntax(sql_query: str) -> str:
@@ -10538,21 +10448,40 @@ def generate_optimized_query_with_error_feedback(original_query: str, analysis_r
    - **CTE構造や結合順序などの最適化設計を維持**
    - **スピル対策やパフォーマンス改善策を保持**
 
-2. **🚨 AMBIGUOUS_REFERENCE エラーの最優先修正**: 
+2. **🚨 致命的構文エラーの最優先修正**:
+
+   **A. カンマ抜けエラー (PARSE_SYNTAX_ERROR)**:
+   - ❌ `i.i_item_sk ss.ss_item_sk` → ✅ `i.i_item_sk, ss.ss_item_sk`
+   - ❌ `SELECT col1 col2 FROM` → ✅ `SELECT col1, col2 FROM`
+   - **SELECT句内でのカンマ抜けを最優先で修正**
+
+   **B. 二重・三重エイリアスエラー**:
+   - ❌ `iss.i.i_brand_id` → ✅ `iss.i_brand_id` または `i.i_brand_id`
+   - ❌ `ss.ss.ss_item_sk` → ✅ `ss.ss_item_sk`
+   - **一つのテーブルに対する重複エイリアス参照を修正**
+
+   **C. 存在しないテーブル/カラム参照**:
+   - ❌ `this_year.i.i_brand_id` → ✅ `this_year.i_brand_id`
+   - **サブクエリエイリアスと内部テーブルエイリアスの混同を修正**
+
+   **D. FROM句構文エラー**:
+   - ❌ `FROM table1, (SELECT ...) x WHERE` → ✅ 適切なJOIN構文に変換
+   - **古いカンマ結合を明示的JOIN構文に変換**
+
+3. **🔍 AMBIGUOUS_REFERENCE エラーの修正**: 
    - **全てのカラム参照でテーブル名またはエイリアス名を明示的に指定**
    - 例: `ss_item_sk` → `store_sales.ss_item_sk` または `ss.ss_item_sk`
    - **サブクエリとメインクエリで同名カラムがある場合は特に注意**
 
-3. **テーブルエイリアスの一貫使用**: 
+4. **テーブルエイリアスの一貫使用**: 
    - 全てのテーブルに短いエイリアス名を付与（例: store_sales → ss, item → i）
    - クエリ全体で一貫してエイリアス名を使用
    - サブクエリ内でも同じエイリアス名体系を維持
 
-4. **構文エラーの修正**: SQL構文の文法エラーを修正
-5. **テーブル・カラム名の確認**: 存在しないテーブルやカラムの修正
-6. **型変換エラーの修正**: 不適切な型変換やキャストの修正
-7. **ヒント句の修正**: 不正なヒント構文の修正（位置は保持）
-8. **権限エラーの回避**: アクセス権限のないテーブルの代替策
+5. **その他の構文エラー修正**: 
+   - **型変換エラー**: 不適切なキャスト修正
+   - **ヒント句エラー**: 構文に合わせた配置修正
+   - **権限エラー**: 代替アクセス方法提案
 
 【🚨 BROADCASTヒント配置の厳格なルール - エラー修正版】
 **✅ 正しい配置（必須）:**
@@ -11111,10 +11040,10 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
         # パフォーマンス比較実行
         print(f"🔍 試行{attempt_num}: パフォーマンス悪化検出を実行")
         
-        # 🎯 修正済み元クエリを使用（AMBIGUOUS_REFERENCEエラー防止）
+        # 🎯 キャッシュされた元クエリを使用（重複処理防止）
         corrected_original_query = globals().get('original_query_corrected', original_query)
         if corrected_original_query != original_query:
-            print("💾 キャッシュされた修正済み元クエリを使用: AMBIGUOUS_REFERENCEエラー防止")
+            print("💾 キャッシュされた元クエリを使用: 重複処理防止")
         
         # 元クエリのEXPLAIN COST取得
         original_explain_cost_result = execute_explain_and_save_to_file(corrected_original_query, "original_performance_check")
@@ -12159,22 +12088,64 @@ elif original_query_for_explain and original_query_for_explain.strip():
             print("\n📋 ステップ1: オリジナルクエリのEXPLAIN実行（Photon対応状況分析）")
             print("-" * 60)
             
-            # 🔧 元のクエリのAMBIGUOUS_REFERENCE事前修正
-            print("🔧 元のクエリのAMBIGUOUS_REFERENCE事前チェック中...")
-            original_query_validated = fix_common_ambiguous_references(original_query_for_explain)
+            # 🎯 元のクエリをそのまま保存（LLMによる修正に完全依存）
+            print("📋 元のクエリをそのまま使用: LLMによる高度な修正に依存")
+            original_query_validated = original_query_for_explain
             
-            if original_query_validated != original_query_for_explain:
-                print("✅ 元のクエリのAMBIGUOUS_REFERENCE修正を適用")
-                print(f"📝 修正箇所: テーブルエイリアス明示化")
-                original_query_for_explain = original_query_validated
-            else:
-                print("✅ 元のクエリに修正の必要なし")
-            
-            # 🎯 修正済み元クエリをグローバル変数として保存（重複処理防止）
+            # 🎯 元クエリをグローバル変数として保存（重複処理防止）
             globals()['original_query_corrected'] = original_query_validated
-            print("💾 修正済み元クエリをキャッシュ: 重複処理防止")
+            print("💾 元クエリをキャッシュ: 重複処理防止")
             
             original_explain_result = execute_explain_and_save_to_file(original_query_for_explain, "original")
+            
+            # 🚨 元クエリでエラーが発生した場合のLLM修正
+            if 'error_file' in original_explain_result:
+                print(f"🚨 元のクエリで構文エラーを検出: {original_explain_result.get('error_file', 'unknown')}")
+                print("🤖 LLMによる元クエリ修正を実行中...")
+                
+                # エラー内容を読み込み
+                error_message = ""
+                if 'error_file' in original_explain_result:
+                    try:
+                        with open(original_explain_result['error_file'], 'r', encoding='utf-8') as f:
+                            error_message = f.read()
+                    except:
+                        error_message = "エラーファイル読み込み失敗"
+                
+                # LLMによる元クエリ修正
+                corrected_original_query = generate_optimized_query_with_error_feedback(
+                    original_query_for_explain,
+                    "元のクエリに構文エラーが検出されました。修正が必要です。",
+                    current_metrics,
+                    error_message,
+                    ""  # previous_optimized_queryは空
+                )
+                
+                # 修正結果をチェック
+                if isinstance(corrected_original_query, str) and not corrected_original_query.startswith("LLM_ERROR:"):
+                    print("✅ LLMによる元クエリ修正完了")
+                    
+                    # 修正されたクエリからSQLを抽出
+                    if isinstance(corrected_original_query, list):
+                        corrected_query_str = extract_main_content_from_thinking_response(corrected_original_query)
+                    else:
+                        corrected_query_str = str(corrected_original_query)
+                    
+                    extracted_sql = extract_sql_from_llm_response(corrected_query_str)
+                    if extracted_sql:
+                        original_query_for_explain = extracted_sql
+                        print("🔄 修正されたクエリで再度EXPLAIN実行")
+                        
+                        # 修正されたクエリで再度EXPLAIN実行
+                        original_explain_result = execute_explain_and_save_to_file(original_query_for_explain, "original_corrected")
+                        
+                        # グローバルキャッシュも更新
+                        globals()['original_query_corrected'] = original_query_for_explain
+                        print("💾 修正された元クエリをキャッシュ更新")
+                    else:
+                        print("❌ 修正されたクエリからSQL抽出失敗")
+                else:
+                    print("❌ LLMによる元クエリ修正失敗")
             
             if 'explain_file' in original_explain_result:
                 print(f"✅ オリジナルクエリのEXPLAIN結果を保存: {original_explain_result['explain_file']}")
