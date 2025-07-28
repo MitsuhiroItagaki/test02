@@ -10292,9 +10292,11 @@ def compare_query_performance(original_explain_cost: str, optimized_explain_cost
         if original_metrics['total_rows'] > 0:
             comparison_result['memory_usage_ratio'] = optimized_metrics['total_rows'] / original_metrics['total_rows']
         
-        # 悪化判定の閾値
-        COST_DEGRADATION_THRESHOLD = 1.3  # 30%以上のコスト増加
-        MEMORY_DEGRADATION_THRESHOLD = 1.5  # 50%以上のメモリ増加
+        # 判定閾値の設定
+        COST_DEGRADATION_THRESHOLD = 1.2  # 20%以上のコスト増加で悪化判定
+        MEMORY_DEGRADATION_THRESHOLD = 1.3  # 30%以上のメモリ増加で悪化判定
+        COST_IMPROVEMENT_THRESHOLD = 0.95  # 5%以上の削減で改善判定
+        MEMORY_IMPROVEMENT_THRESHOLD = 0.95  # 5%以上の削減で改善判定
         
         # パフォーマンス悪化検出
         degradation_factors = []
@@ -10316,19 +10318,45 @@ def compare_query_performance(original_explain_cost: str, optimized_explain_cost
             comparison_result['recommendation'] = 'use_original'
             comparison_result['details'] = degradation_factors
         else:
-            # 改善効果の詳細
-            improvement_factors = []
+            # 悪化ではないが、改善/同等の詳細判定
+            performance_factors = []
             
-            if comparison_result['total_cost_ratio'] < 0.9:
-                improvement_factors.append(f"実行コスト改善: {(1-comparison_result['total_cost_ratio'])*100:.1f}%削減")
+            # 実行コストの詳細判定
+            if comparison_result['total_cost_ratio'] < COST_IMPROVEMENT_THRESHOLD:
+                performance_factors.append(f"実行コスト改善: {(1-comparison_result['total_cost_ratio'])*100:.1f}%削減")
+            elif comparison_result['total_cost_ratio'] > 1.05:  # 5%以上の増加
+                performance_factors.append(f"実行コスト軽微悪化: {(comparison_result['total_cost_ratio']-1)*100:.1f}%増加（許容範囲）")
+            else:
+                performance_factors.append(f"実行コスト同等: {comparison_result['total_cost_ratio']:.2f}倍（変化なし）")
                 
-            if comparison_result['memory_usage_ratio'] < 0.9:
-                improvement_factors.append(f"メモリ使用量改善: {(1-comparison_result['memory_usage_ratio'])*100:.1f}%削減")
+            # メモリ使用量の詳細判定
+            if comparison_result['memory_usage_ratio'] < MEMORY_IMPROVEMENT_THRESHOLD:
+                performance_factors.append(f"メモリ使用量改善: {(1-comparison_result['memory_usage_ratio'])*100:.1f}%削減")
+            elif comparison_result['memory_usage_ratio'] > 1.05:  # 5%以上の増加
+                performance_factors.append(f"メモリ使用量軽微悪化: {(comparison_result['memory_usage_ratio']-1)*100:.1f}%増加（許容範囲）")
+            else:
+                performance_factors.append(f"メモリ使用量同等: {comparison_result['memory_usage_ratio']:.2f}倍（変化なし）")
             
+            # JOIN効率化チェック
             if optimized_metrics['join_operations'] < original_metrics['join_operations']:
-                improvement_factors.append(f"JOIN効率化: {original_metrics['join_operations']} → {optimized_metrics['join_operations']}操作")
+                performance_factors.append(f"JOIN効率化: {original_metrics['join_operations']} → {optimized_metrics['join_operations']}操作")
+            elif optimized_metrics['join_operations'] > original_metrics['join_operations']:
+                performance_factors.append(f"JOIN操作増加: {original_metrics['join_operations']} → {optimized_metrics['join_operations']}操作（軽微）")
             
-            comparison_result['details'] = improvement_factors if improvement_factors else ["パフォーマンス改善を確認"]
+            # 総合判定メッセージの決定
+            has_improvement = any("改善" in factor for factor in performance_factors)
+            has_degradation = any("軽微悪化" in factor for factor in performance_factors)
+            
+            if has_improvement and not has_degradation:
+                performance_factors.insert(0, "✅ 総合的にパフォーマンス改善を確認")
+            elif has_degradation and not has_improvement:
+                performance_factors.insert(0, "⚠️ 軽微なパフォーマンス悪化（許容範囲内）")
+            elif has_improvement and has_degradation:
+                performance_factors.insert(0, "🔄 パフォーマンストレードオフ（一部改善、一部悪化）")
+            else:
+                performance_factors.insert(0, "➖ パフォーマンス同等（大きな変化なし）")
+            
+            comparison_result['details'] = performance_factors
         
     except Exception as e:
         # エラー時は安全側に倒して元クエリを推奨
