@@ -87,6 +87,12 @@ EXPLAIN_ENABLED = 'Y'
 # 🐛 デバッグモード設定（DEBUG_ENABLED: 'Y' = 中間ファイル保持, 'N' = 最終ファイルのみ保持）
 DEBUG_ENABLED = 'N'
 
+# 🧠 構造化抽出設定（STRUCTURED_EXTRACTION_ENABLED: 'Y' = 構造化抽出使用, 'N' = 従来の切り詰め使用）
+# Physical PlanとEXPLAIN COSTの処理方式を制御
+# - 'Y': 重要情報のみを構造化抽出（推奨：高精度・高効率）
+# - 'N': 従来の文字数制限による切り詰め（フォールバック用）
+STRUCTURED_EXTRACTION_ENABLED = 'Y'
+
 # 🔄 自動エラー修正の最大試行回数設定（MAX_RETRIES: デフォルト2回）
 # LLMが生成した最適化クエリのEXPLAIN実行でエラーが発生した場合の再試行回数
 # - 1回目: 初回生成クエリでEXPLAIN実行
@@ -5804,6 +5810,220 @@ def analyze_broadcast_feasibility(metrics: Dict[str, Any], original_query: str, 
     
     return broadcast_analysis
 
+def extract_structured_physical_plan(physical_plan: str) -> Dict[str, Any]:
+    """
+    Physical Planから重要情報のみを構造化抽出（トークン制限対策）
+    
+    Args:
+        physical_plan: Physical Planの完全テキスト
+    
+    Returns:
+        Dict: 構造化された重要情報
+    """
+    import re
+    
+    extracted = {
+        "joins": [],           # JOIN情報（種類、条件、統計）
+        "scans": [],          # テーブルスキャン（サイズ、行数）  
+        "exchanges": [],      # データ移動（Shuffle、Broadcast）
+        "aggregates": [],     # 集約処理（GROUP BY、SUM等）
+        "filters": [],        # フィルタ条件と選択率
+        "photon_usage": {},   # Photon利用状況
+        "bottlenecks": [],    # 特定されたボトルネック
+        "statistics": {},     # 数値統計サマリー
+        "total_size": len(physical_plan),
+        "extraction_summary": ""
+    }
+    
+    try:
+        lines = physical_plan.split('\n')
+        join_count = scan_count = exchange_count = 0
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # JOIN情報の抽出
+            join_match = re.search(r'(\w*Join)\s+([^,\n]+).*?Statistics\(([^)]+)\)', line)
+            if join_match:
+                join_type = join_match.group(1)
+                condition = join_match.group(2).strip()
+                stats = join_match.group(3)
+                
+                # 統計情報から数値抽出
+                size_match = re.search(r'sizeInBytes=([0-9.]+)\s*([KMGT]i?B)?', stats)
+                rows_match = re.search(r'rowCount=(\d+)', stats)
+                
+                extracted["joins"].append({
+                    "type": join_type,
+                    "condition": condition[:100],  # 条件を100文字に制限
+                    "size": f"{size_match.group(1)}{size_match.group(2) or 'B'}" if size_match else "unknown",
+                    "rows": rows_match.group(1) if rows_match else "unknown"
+                })
+                join_count += 1
+                
+            # テーブルスキャン情報の抽出
+            elif 'FileScan' in line and 'Statistics(' in line:
+                stats_match = re.search(r'Statistics\(([^)]+)\)', line)
+                table_match = re.search(r'FileScan\s+([^,\s]+)', line)
+                
+                if stats_match and table_match:
+                    stats = stats_match.group(1)
+                    table = table_match.group(1)
+                    
+                    size_match = re.search(r'sizeInBytes=([0-9.]+)\s*([KMGT]i?B)?', stats)
+                    rows_match = re.search(r'rowCount=(\d+)', stats)
+                    
+                    extracted["scans"].append({
+                        "table": table[:50],  # テーブル名を50文字に制限
+                        "size": f"{size_match.group(1)}{size_match.group(2) or 'B'}" if size_match else "unknown",
+                        "rows": rows_match.group(1) if rows_match else "unknown"
+                    })
+                    scan_count += 1
+                    
+            # データ移動（Exchange）の抽出
+            elif 'Exchange' in line:
+                if 'BroadcastExchange' in line:
+                    extracted["exchanges"].append({"type": "BROADCAST", "detail": line[:100]})
+                elif 'ShuffleExchange' in line or 'Exchange' in line:
+                    extracted["exchanges"].append({"type": "SHUFFLE", "detail": line[:100]})
+                exchange_count += 1
+                
+            # 集約処理の抽出
+            elif 'Aggregate' in line or 'HashAggregate' in line:
+                extracted["aggregates"].append({"type": "AGGREGATE", "detail": line[:100]})
+                
+            # Photon利用状況の確認
+            elif 'Photon' in line:
+                if 'PhotonResultStage' in line:
+                    extracted["photon_usage"]["result_stage"] = True
+                elif 'PhotonHashJoin' in line:
+                    extracted["photon_usage"]["hash_join"] = True
+                elif 'PhotonProject' in line:
+                    extracted["photon_usage"]["project"] = True
+        
+        # 統計サマリー生成
+        extracted["statistics"] = {
+            "total_joins": join_count,
+            "total_scans": scan_count,  
+            "total_exchanges": exchange_count,
+            "photon_operations": len([k for k, v in extracted["photon_usage"].items() if v])
+        }
+        
+        # 抽出サマリー生成
+        extracted["extraction_summary"] = f"📊 構造化抽出完了: JOIN({join_count}) SCAN({scan_count}) EXCHANGE({exchange_count}) PHOTON({len(extracted['photon_usage'])})"
+        
+    except Exception as e:
+        extracted["extraction_error"] = str(e)
+        
+    return extracted
+
+def extract_structured_cost_statistics(explain_cost_content: str) -> Dict[str, Any]:
+    """
+    EXPLAIN COSTから数値統計のみを構造化抽出（トークン制限対策）
+    
+    Args:
+        explain_cost_content: EXPLAIN COSTの完全結果
+    
+    Returns:
+        Dict: 構造化された統計情報
+    """
+    import re
+    
+    extracted = {
+        "table_stats": {},      # テーブル別統計（サイズ、行数）
+        "join_costs": {},       # JOIN別コスト見積もり  
+        "selectivity": {},      # フィルタ選択率
+        "partition_info": {},   # パーティション統計
+        "memory_estimates": {}, # メモリ使用量予測
+        "cost_breakdown": {},   # コスト内訳
+        "critical_stats": {},   # 重要統計値
+        "total_size": len(explain_cost_content),
+        "extraction_summary": ""
+    }
+    
+    try:
+        lines = explain_cost_content.split('\n')
+        tables_found = costs_found = memory_found = 0
+        
+        # 重要統計値を追跡
+        largest_table = {"name": "", "size": 0, "size_str": ""}
+        total_rows = 0
+        broadcast_candidates = []
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # テーブル統計の抽出
+            if 'Statistics(' in line:
+                # サイズ情報の抽出
+                size_match = re.search(r'sizeInBytes=([0-9.]+)\s*([KMGT]i?B)?', line)
+                rows_match = re.search(r'rowCount=(\d+)', line)
+                
+                if size_match:
+                    size_val = float(size_match.group(1))
+                    size_unit = size_match.group(2) or 'B'
+                    size_str = f"{size_val}{size_unit}"
+                    
+                    # 最大テーブルの追跡
+                    size_bytes = size_val
+                    if 'KiB' in size_unit:
+                        size_bytes *= 1024
+                    elif 'MiB' in size_unit:
+                        size_bytes *= 1024 * 1024
+                    elif 'GiB' in size_unit:
+                        size_bytes *= 1024 * 1024 * 1024
+                    elif 'TiB' in size_unit:
+                        size_bytes *= 1024 * 1024 * 1024 * 1024
+                        
+                    if size_bytes > largest_table["size"]:
+                        largest_table = {"name": f"table_{tables_found}", "size": size_bytes, "size_str": size_str}
+                    
+                    # ブロードキャスト候補（30MB未満）
+                    if size_bytes < 30 * 1024 * 1024:  # 30MB
+                        broadcast_candidates.append(size_str)
+                    
+                    tables_found += 1
+                    
+                if rows_match:
+                    total_rows += int(rows_match.group(1))
+                    
+            # コスト情報の抽出  
+            elif 'Cost(' in line:
+                cost_match = re.search(r'Cost\(([0-9.]+)\)', line)
+                if cost_match:
+                    extracted["cost_breakdown"][f"operation_{costs_found}"] = float(cost_match.group(1))
+                    costs_found += 1
+                    
+            # メモリ関連情報の抽出
+            elif any(keyword in line.lower() for keyword in ['memory', 'spill', 'threshold']):
+                if 'memory' in line.lower():
+                    memory_match = re.search(r'(\d+(?:\.\d+)?)\s*([KMGT]i?B)', line)
+                    if memory_match:
+                        extracted["memory_estimates"][f"estimate_{memory_found}"] = f"{memory_match.group(1)}{memory_match.group(2)}"
+                        memory_found += 1
+        
+        # 重要統計値のまとめ
+        extracted["critical_stats"] = {
+            "largest_table": largest_table,
+            "total_rows": total_rows,
+            "broadcast_candidates": broadcast_candidates[:5],  # 上位5個まで
+            "tables_analyzed": tables_found,
+            "cost_operations": costs_found,
+            "memory_estimates": memory_found
+        }
+        
+        # 抽出サマリー生成
+        extracted["extraction_summary"] = f"💰 統計抽出完了: テーブル({tables_found}) コスト({costs_found}) メモリ({memory_found}) BROADCAST候補({len(broadcast_candidates)})"
+        
+    except Exception as e:
+        extracted["extraction_error"] = str(e)
+        
+    return extracted
+
 def extract_cost_statistics_from_explain_cost(explain_cost_content: str) -> str:
     """
     EXPLAIN COST結果から統計情報を抽出して構造化（改善版 + サイズ制限）
@@ -5929,41 +6149,92 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
                     explain_content = f.read()
                     print(f"✅ EXPLAIN結果ファイルを読み込み: {latest_explain_file}")
                 
-                # Physical Planの抽出（サイズ制限適用）
+                # Physical Planの抽出と処理（構造化抽出対応）
                 if "== Physical Plan ==" in explain_content:
                     physical_plan_start = explain_content.find("== Physical Plan ==")
                     physical_plan_end = explain_content.find("== Photon", physical_plan_start)
                     if physical_plan_end == -1:
                         physical_plan_end = len(explain_content)
-                    physical_plan = explain_content[physical_plan_start:physical_plan_end].strip()
-                    print(f"📊 Physical Plan情報を抽出: {len(physical_plan)} 文字")
+                    physical_plan_raw = explain_content[physical_plan_start:physical_plan_end].strip()
+                    print(f"📊 Physical Plan情報を抽出: {len(physical_plan_raw)} 文字")
                     
-                    # Physical Planのサイズ制限（LLMトークン制限対策）
-                    MAX_PLAN_SIZE = 30000  # 約30KB制限
-                    if len(physical_plan) > MAX_PLAN_SIZE:
-                        # 🚨 DEBUG_ENABLED='Y'の場合、完全なPhysical Planをファイル保存
-                        debug_enabled = globals().get('DEBUG_ENABLED', 'N')
-                        if debug_enabled.upper() == 'Y':
-                            try:
-                                from datetime import datetime
-                                timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-                                full_plan_filename = f"output_physical_plan_full_{timestamp}.txt"
-                                
-                                with open(full_plan_filename, 'w', encoding='utf-8') as f:
-                                    f.write(f"# 完全なPhysical Plan情報 (生成日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n")
-                                    f.write(f"# 元サイズ: {len(physical_plan):,} 文字\n")
-                                    f.write(f"# LLM使用サイズ: {MAX_PLAN_SIZE:,} 文字\n\n")
-                                    f.write(physical_plan)
-                                
-                                print(f"📄 完全なPhysical Planを保存: {full_plan_filename}")
-                                
-                            except Exception as save_error:
-                                print(f"⚠️ Physical Plan保存に失敗: {str(save_error)}")
-                        
-                        truncated_plan = physical_plan[:MAX_PLAN_SIZE]
-                        truncated_plan += f"\n\n⚠️ Physical Planが大きすぎるため、{MAX_PLAN_SIZE}文字に切り詰められました"
-                        physical_plan = truncated_plan
-                        print(f"⚠️ Physical Planをトークン制限のため{MAX_PLAN_SIZE}文字に切り詰めました")
+                    # 🧠 構造化抽出 vs 従来の切り詰めの選択
+                    structured_enabled = globals().get('STRUCTURED_EXTRACTION_ENABLED', 'Y')
+                    debug_enabled = globals().get('DEBUG_ENABLED', 'N')
+                    
+                    if structured_enabled.upper() == 'Y':
+                        # 🚀 構造化抽出アプローチ
+                        try:
+                            structured_plan = extract_structured_physical_plan(physical_plan_raw)
+                            
+                            # 構造化結果をJSON形式で文字列化
+                            import json
+                            physical_plan = json.dumps(structured_plan, ensure_ascii=False, indent=2)
+                            
+                            print(f"🧠 構造化抽出完了: {len(physical_plan_raw):,} → {len(physical_plan):,} 文字 (圧縮率: {len(physical_plan_raw)//len(physical_plan) if len(physical_plan) > 0 else 0}x)")
+                            print(f"   {structured_plan.get('extraction_summary', '📊 構造化抽出完了')}")
+                            
+                            # DEBUG_ENABLED='Y'の場合、構造化結果と元データを保存
+                            if debug_enabled.upper() == 'Y':
+                                try:
+                                    from datetime import datetime
+                                    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                                    
+                                    # 元のPhysical Plan保存
+                                    full_plan_filename = f"output_physical_plan_full_{timestamp}.txt"
+                                    with open(full_plan_filename, 'w', encoding='utf-8') as f:
+                                        f.write(f"# 完全なPhysical Plan情報 (生成日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n")
+                                        f.write(f"# 元サイズ: {len(physical_plan_raw):,} 文字\n")
+                                        f.write(f"# 構造化後サイズ: {len(physical_plan):,} 文字\n\n")
+                                        f.write(physical_plan_raw)
+                                    
+                                    # 構造化結果保存
+                                    structured_plan_filename = f"output_physical_plan_structured_{timestamp}.json"
+                                    with open(structured_plan_filename, 'w', encoding='utf-8') as f:
+                                        f.write(physical_plan)
+                                    
+                                    print(f"📄 完全なPhysical Planを保存: {full_plan_filename}")
+                                    print(f"📄 構造化Physical Planを保存: {structured_plan_filename}")
+                                    
+                                except Exception as save_error:
+                                    print(f"⚠️ Physical Plan保存に失敗: {str(save_error)}")
+                                    
+                        except Exception as extraction_error:
+                            print(f"⚠️ 構造化抽出に失敗、従来方式にフォールバック: {str(extraction_error)}")
+                            # フォールバック: 従来の切り詰め方式
+                            MAX_PLAN_SIZE = 30000
+                            if len(physical_plan_raw) > MAX_PLAN_SIZE:
+                                physical_plan = physical_plan_raw[:MAX_PLAN_SIZE] + f"\n\n⚠️ 構造化抽出失敗のため{MAX_PLAN_SIZE}文字に切り詰められました"
+                                print(f"⚠️ フォールバック: Physical Planを{MAX_PLAN_SIZE}文字に切り詰めました")
+                            else:
+                                physical_plan = physical_plan_raw
+                    else:
+                        # 🔄 従来の切り詰めアプローチ
+                        physical_plan = physical_plan_raw
+                        MAX_PLAN_SIZE = 30000  # 約30KB制限
+                        if len(physical_plan) > MAX_PLAN_SIZE:
+                            # DEBUG_ENABLED='Y'の場合、完全なPhysical Planをファイル保存
+                            if debug_enabled.upper() == 'Y':
+                                try:
+                                    from datetime import datetime
+                                    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                                    full_plan_filename = f"output_physical_plan_full_{timestamp}.txt"
+                                    
+                                    with open(full_plan_filename, 'w', encoding='utf-8') as f:
+                                        f.write(f"# 完全なPhysical Plan情報 (生成日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n")
+                                        f.write(f"# 元サイズ: {len(physical_plan):,} 文字\n")
+                                        f.write(f"# LLM使用サイズ: {MAX_PLAN_SIZE:,} 文字\n\n")
+                                        f.write(physical_plan)
+                                    
+                                    print(f"📄 完全なPhysical Planを保存: {full_plan_filename}")
+                                    
+                                except Exception as save_error:
+                                    print(f"⚠️ Physical Plan保存に失敗: {str(save_error)}")
+                            
+                            truncated_plan = physical_plan[:MAX_PLAN_SIZE]
+                            truncated_plan += f"\n\n⚠️ Physical Planが大きすぎるため、{MAX_PLAN_SIZE}文字に切り詰められました"
+                            physical_plan = truncated_plan
+                            print(f"⚠️ Physical Planをトークン制限のため{MAX_PLAN_SIZE}文字に切り詰めました")
                 
                 # Photon Explanationの抽出
                 if "== Photon Explanation ==" in explain_content:
@@ -5989,9 +6260,49 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
                     explain_cost_content = f.read()
                     print(f"💰 EXPLAIN COST結果ファイルを読み込み: {latest_cost_file}")
                 
-                # 統計情報の抽出（サイズ制限適用）
-                cost_statistics = extract_cost_statistics_from_explain_cost(explain_cost_content)
-                print(f"📊 EXPLAIN COST統計情報を抽出: {len(cost_statistics)} 文字")
+                # 統計情報の抽出（構造化抽出対応）
+                structured_enabled = globals().get('STRUCTURED_EXTRACTION_ENABLED', 'Y')
+                
+                if structured_enabled.upper() == 'Y':
+                    # 🚀 構造化抽出アプローチ
+                    try:
+                        structured_cost = extract_structured_cost_statistics(explain_cost_content)
+                        
+                        # 構造化結果をJSON形式で文字列化
+                        import json
+                        cost_statistics = json.dumps(structured_cost, ensure_ascii=False, indent=2)
+                        
+                        print(f"💰 EXPLAIN COST構造化抽出完了: {len(explain_cost_content):,} → {len(cost_statistics):,} 文字 (圧縮率: {len(explain_cost_content)//len(cost_statistics) if len(cost_statistics) > 0 else 0}x)")
+                        print(f"   {structured_cost.get('extraction_summary', '💰 統計抽出完了')}")
+                        
+                    except Exception as extraction_error:
+                        print(f"⚠️ EXPLAIN COST構造化抽出に失敗、従来方式にフォールバック: {str(extraction_error)}")
+                        # フォールバック: 従来の抽出方式
+                        cost_statistics = extract_cost_statistics_from_explain_cost(explain_cost_content)
+                        print(f"📊 EXPLAIN COST統計情報を抽出（従来方式）: {len(cost_statistics)} 文字")
+                else:
+                    # 🔄 従来の抽出アプローチ
+                    cost_statistics = extract_cost_statistics_from_explain_cost(explain_cost_content)
+                    print(f"📊 EXPLAIN COST統計情報を抽出: {len(cost_statistics)} 文字")
+                
+                # 🚨 DEBUG_ENABLED='Y'の場合、抽出された統計情報を常に保存
+                debug_enabled = globals().get('DEBUG_ENABLED', 'N')
+                if debug_enabled.upper() == 'Y':
+                    try:
+                        from datetime import datetime
+                        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                        extracted_stats_filename = f"output_explain_cost_statistics_extracted_{timestamp}.txt"
+                        
+                        with open(extracted_stats_filename, 'w', encoding='utf-8') as f:
+                            f.write(f"# 抽出されたEXPLAIN COST統計情報 (生成日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n")
+                            f.write(f"# 抽出サイズ: {len(cost_statistics):,} 文字\n")
+                            f.write(f"# 元ファイル: {latest_cost_file}\n\n")
+                            f.write(cost_statistics)
+                        
+                        print(f"📄 抽出統計情報を保存: {extracted_stats_filename}")
+                        
+                    except Exception as save_error:
+                        print(f"⚠️ 抽出統計情報保存に失敗: {str(save_error)}")
                 
                 # 統計情報のサイズ制限（LLMトークン制限対策）
                 MAX_STATISTICS_SIZE = 50000  # 約50KB制限
@@ -6300,25 +6611,32 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
 
 【💰 EXPLAIN COST統計情報分析（統計ベース最適化）】
 {f'''
-**EXPLAIN COST統計情報:**
-```
+**構造化EXPLAIN COST統計情報:**
+```json
 {cost_statistics}
 ```
 
-**統計ベース最適化の重要ポイント:**
-- テーブルサイズ統計に基づく正確なBROADCAST判定
-- 行数・選択率統計によるフィルタ順序最適化
-- コスト見積もりによるJOIN戦略選択
-- パーティション統計によるスキュー対策
-- 統計情報に基づく最適パーティション数算出
-- メモリ使用量の事前予測とスピル回避
+**🧠 構造化統計データの活用指針:**
+上記は構造化抽出された統計情報です。以下の項目を重点的に分析してください：
 
-**統計活用による精密最適化:**
-- サイズ統計: 30MB閾値の正確な判定でBROADCAST適用
-- 選択率統計: WHERE条件の実行順序最適化
-- 行数統計: GROUP BY・JOINのパーティション数最適化
-- コスト統計: 複数のJOIN戦略から最適解を選択
-- 分散統計: データスキュー検出と均等化戦略
+- **critical_stats**: 重要統計値（最大テーブル、総行数、BROADCAST候補）
+- **largest_table**: 最大テーブルのサイズ（BROADCAST判定の基準）
+- **broadcast_candidates**: 30MB未満の小テーブル（BROADCAST対象）
+- **total_rows**: 総行数（パーティション数算出に使用）
+- **cost_breakdown**: 処理コスト（JOIN戦略選択に使用）
+- **memory_estimates**: メモリ予測（スピル回避に使用）
+
+**構造化統計ベースの精密最適化:**
+- サイズ統計: largest_tableとbroadcast_candidatesから正確なBROADCAST判定
+- 行数統計: total_rowsから最適パーティション数を算出
+- コスト統計: cost_breakdownから効率的なJOIN順序を決定
+- メモリ統計: memory_estimatesからスピル回避戦略を立案
+
+**🎯 構造化データ解析のポイント:**
+1. critical_stats.largest_tableが1GB以上 → BROADCAST対象外
+2. broadcast_candidatesの存在 → BROADCAST JOINの積極適用
+3. total_rowsが10億行以上 → パーティション数増加検討
+4. memory_estimatesでspillリスク評価 → REPARTITIONヒント適用
 ''' if explain_enabled.upper() == 'Y' and cost_statistics else '(EXPLAIN COST実行が無効、または統計情報が利用できません)'}
 
 【🎯 処理速度重視の最適化要求】
@@ -10419,15 +10737,19 @@ else:
         # 🚨 新規追加: DEBUG用の完全情報ファイルも削除対象に含める
         full_plan_files = glob.glob("output_physical_plan_full_*.txt")
         full_stats_files = glob.glob("output_explain_cost_statistics_full_*.txt")
+        extracted_stats_files = glob.glob("output_explain_cost_statistics_extracted_*.txt")
+        structured_plan_files = glob.glob("output_physical_plan_structured_*.json")
+        structured_cost_files = glob.glob("output_explain_cost_structured_*.json")
         
         all_temp_files = (original_files + optimized_files + cost_original_files + cost_optimized_files + 
                          error_original_files + error_optimized_files + old_explain_files + old_error_files +
-                         full_plan_files + full_stats_files)
+                         full_plan_files + full_stats_files + extracted_stats_files + 
+                         structured_plan_files + structured_cost_files)
         
         explain_files = original_files + optimized_files + old_explain_files
         cost_files = cost_original_files + cost_optimized_files
         error_files = error_original_files + error_optimized_files + old_error_files
-        debug_files = full_plan_files + full_stats_files
+        debug_files = full_plan_files + full_stats_files + extracted_stats_files + structured_plan_files + structured_cost_files
         
         if all_temp_files:
             print(f"📁 削除対象ファイル:")
