@@ -11424,21 +11424,16 @@ def execute_explain_with_retry_logic(original_query: str, analysis_result: str, 
         if 'explain_file' in explain_result and 'error_file' not in explain_result:
             print(f"✅ 試行 {attempt_num} で成功しました！")
             
-            # 🔍 パフォーマンス悪化検出（EXPLAIN COST比較）
-            print("🔍 パフォーマンス悪化検出を実行中...")
+            # 🚨 修正：パフォーマンス比較は反復最適化関数で一元化
+            # パフォーマンス比較をここで実行すると二重実行になるため削除
             
-            # 元クエリのEXPLAIN COST取得（存在しない場合は実行）
-            original_explain_cost_result = execute_explain_and_save_to_file(original_query, "original_performance_check")
+            # 🚨 修正：以下のパフォーマンス比較を無効化（二重実行防止）
+            # パフォーマンス比較は execute_iterative_optimization_with_degradation_analysis で一元化
             
-            # 最適化クエリのEXPLAIN COST取得（存在しない場合は実行）
-            optimized_explain_cost_result = execute_explain_and_save_to_file(current_query, "optimized_performance_check")
+            # 🔧 構文チェック成功のため、即座に success ステータスで次のステップへ
+            performance_comparison = None  # 反復最適化で設定される
             
-            # 両方のEXPLAIN COSTが正常に取得できた場合のみ比較実行
-            performance_comparison = None
-            if ('explain_cost_file' in original_explain_cost_result and 
-                'explain_cost_file' in optimized_explain_cost_result and
-                'error_file' not in original_explain_cost_result and
-                'error_file' not in optimized_explain_cost_result):
+            if False:  # 🚨 パフォーマンス比較ブロックを無効化
                 
                 try:
                     # EXPLAIN COSTファイル内容を読み込み
@@ -11512,9 +11507,10 @@ def execute_explain_with_retry_logic(original_query: str, analysis_result: str, 
                         'error_details': str(e)
                     }
             
-            else:
-                print("⚠️ EXPLAIN COST取得失敗のため、パフォーマンス比較をスキップ")
-                print("🔄 構文的に正常な最適化クエリを使用します")
+            # 🚨 修正：else部分も無効化（二重実行防止）
+            # else:
+            #     print("⚠️ EXPLAIN COST取得失敗のため、パフォーマンス比較をスキップ")
+            #     print("🔄 構文的に正常な最適化クエリを使用します")
             
             # 成功記録
             attempt_record = {
