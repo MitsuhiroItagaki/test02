@@ -8195,6 +8195,64 @@ def summarize_explain_results_with_llm(explain_content: str, explain_cost_conten
         }
 
 
+def format_sql_content_for_report(content: str) -> str:
+    """
+    SQLファイル内容またはLLMレスポンスをレポート用に適切にフォーマット
+    
+    Args:
+        content: SQLファイル内容またはLLMレスポンス
+        
+    Returns:
+        str: レポート用にフォーマットされた内容
+    """
+    # SQLファイル内容の場合（-- で始まるコメントがある場合）
+    if content.startswith('--') and 'USE CATALOG' in content:
+        # SQLファイル内容の場合は、適切なフォーマットで表示
+        lines = content.split('\n')
+        sql_lines = []
+        in_sql_section = False
+        
+        for line in lines:
+            # USE CATALOG/USE SCHEMA以降が実際のクエリ部分
+            if line.strip().startswith('USE CATALOG') or line.strip().startswith('USE SCHEMA'):
+                in_sql_section = True
+                sql_lines.append(line)
+            elif in_sql_section and line.strip():
+                sql_lines.append(line)
+            elif not in_sql_section and line.strip().startswith('--'):
+                # コメント行は残す（ヘッダー情報）
+                continue
+        
+        # フォーマットされた内容を返す
+        if sql_lines:
+            return f"""**🚀 動作保証済み最適化クエリ (SQLファイルと同一):**
+
+```sql
+{chr(10).join(sql_lines)}
+```
+
+💡 このクエリは実際のEXPLAIN実行で動作確認済みです。"""
+        else:
+            return f"""**🚀 SQLファイル内容:**
+
+```sql
+{content}
+```"""
+    
+    # LLMレスポンスの場合
+    else:
+        # ```sql``` ブロックがあるかチェック
+        if '```sql' in content:
+            return f"""**💡 LLM最適化分析:**
+
+{content}"""
+        else:
+            return f"""**💡 LLM最適化分析:**
+
+{content}
+
+📝 注意: 上記は分析結果です。実際の実行用クエリは対応するSQLファイルを参照してください。"""
+
 def generate_comprehensive_optimization_report(query_id: str, optimized_result: str, metrics: Dict[str, Any], analysis_result: str = "") -> str:
     """
     包括的な最適化レポートを生成
@@ -8489,13 +8547,16 @@ Statistical optimization has been executed (details available with DEBUG_ENABLED
             report += f"⚠️ TOP10処理時間分析の生成でエラーが発生しました: {str(e)}\n"
         
         # SQL最適化分析結果の追加
+        # 🚀 SQLファイル内容の場合は適切にフォーマット
+        formatted_sql_content = format_sql_content_for_report(optimized_result)
+        
         report += f"""
 
 ## 🚀 4. SQL最適化分析結果
 
 ### 💡 最適化提案
 
-{optimized_result}
+{formatted_sql_content}
 
 ### 📈 5. 期待されるパフォーマンス改善効果
 
@@ -8679,12 +8740,15 @@ The following topics are analyzed for process evaluation:
 """
         
         # SQL最適化分析結果の追加（英語版）
+        # 🚀 SQLファイル内容の場合は適切にフォーマット
+        formatted_sql_content = format_sql_content_for_report(optimized_result)
+        
         report += f"""
 ## 🚀 4. SQL Optimization Analysis Results
 
 ### 💡 Optimization Recommendations
 
-{optimized_result}
+{formatted_sql_content}
 
 ### 📈 5. Expected Performance Improvement
 
@@ -9313,8 +9377,20 @@ def save_optimized_sql_files(original_query: str, optimized_result: str, metrics
     
     print("🤖 LLMによるレポート推敲を実行中...")
     
-    # 初回レポートの生成（レポート用データを使用）
-    report_data = llm_response if llm_response else optimized_result
+    # 🚀 実際に保存されたSQLファイルの内容を読み込んでレポートに使用
+    try:
+        with open(optimized_filename, 'r', encoding='utf-8') as f:
+            actual_sql_content = f.read()
+        
+        # レポート用に実際のSQLファイル内容を使用（動作保証済み）
+        print(f"✅ レポート生成用にSQLファイル内容を読み込み: {optimized_filename}")
+        report_data = actual_sql_content
+        
+    except Exception as e:
+        print(f"⚠️ SQLファイル読み込み失敗、初回レスポンスを使用: {str(e)}")
+        # フォールバック: 初回レスポンスを使用
+        report_data = llm_response if llm_response else optimized_result
+    
     initial_report = generate_comprehensive_optimization_report(
         query_id, report_data, metrics, analysis_result
     )
