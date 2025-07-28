@@ -6535,7 +6535,8 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
         plan_info = extract_execution_plan_info(profiler_data)
     
     # BROADCAST適用可能性の分析（プラン情報を含む）
-    broadcast_analysis = analyze_broadcast_feasibility(metrics, original_query, plan_info)
+    # 🎯 BROADCAST最適化は無効化（ユーザー要求により除外）
+    broadcast_analysis = {"feasibility": "disabled", "broadcast_candidates": [], "reasoning": ["BROADCASTヒントは構文エラーの原因となるため無効化"], "is_join_query": True}
     
     # プラン情報をメトリクスに追加（ファイル出力で使用）
     if plan_info:
@@ -6703,9 +6704,9 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
                 broadcast_summary.append("✅ 最適化完了: 実行プランは適切にBROADCAST JOINが適用されています")
         else:
             if broadcast_analysis["feasibility"] in ["recommended", "all_small"]:
-                broadcast_summary.append("🚀 最適化推奨: BROADCASTヒントの適用により大幅な性能改善が期待できます")
+                broadcast_summary.append("🚀 最適化推奨: 効率的なJOIN順序により性能改善が期待できます")
             elif broadcast_analysis["feasibility"] == "not_recommended":
-                broadcast_summary.append("⚠️ 最適化困難: テーブルサイズが大きく、BROADCAST適用は推奨されません")
+                                  broadcast_summary.append("⚠️ 最適化注意: テーブルサイズが大きく、慎重なJOIN順序設計が必要です")
         
         # 重要な注意事項
         if broadcast_analysis["reasoning"]:
@@ -6713,7 +6714,7 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
             for reason in broadcast_analysis["reasoning"][:3]:  # 最大3個に拡張
                 broadcast_summary.append(f"  • {reason}")
     else:
-        broadcast_summary.append("❌ JOINクエリではないため、BROADCASTヒント適用対象外")
+        broadcast_summary.append("❌ JOINクエリではないため、JOIN順序最適化は適用対象外")
     
     optimization_prompt = f"""
 あなたはDatabricksのSQLパフォーマンス最適化の専門家です。以下の**詳細なボトルネック分析結果**を基に、**処理速度重視**でSQLクエリを最適化してください。
@@ -6792,9 +6793,9 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
 - **table_breakdown**: テーブル名の詳細（最大テーブル名、BROADCAST対象テーブル名）
 
 **🎯 テーブル名を使った精密最適化:**
-1. **具体的なBROADCASTヒント生成:**
-   - broadcast_candidatesから `/*+ BROADCAST(テーブル名) */` ヒントを生成
-   - テーブル名とサイズの対応で正確な判定
+1. **JOIN順序の最適化:**
+   - テーブルサイズに基づく効率的なJOIN順序の決定
+   - 小テーブルから大テーブルへの段階的結合
 
 2. **JOIN順序の具体的提案:**
    - largest_table.nameを最後に配置
@@ -6806,9 +6807,9 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
    - 具体的なエイリアス提案（例: `store_sales.ss_item_sk`）
 
 **🚀 構造化データ解析の実行例:**
-1. table_stats内でis_broadcast_candidate=trueのテーブル → BROADCAST適用
+1. table_stats内で小テーブルを特定し、効率的なJOIN順序を決定
 2. largest_table_nameが1GB以上 → 大テーブルとして最終JOINに配置
-3. broadcast_table_namesから具体的なヒント：`/*+ BROADCAST(item, date_dim) */`
+3. JOIN順序の具体的な改善提案を生成
 4. テーブル名を明示したJOIN順序提案を生成
 
 **🚨 トークン制限対策について:**
@@ -6842,10 +6843,10 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
    - 適切なJOIN戦略の選択
    - ネットワーク転送量の削減
 
-5. **🎯 BROADCAST最適化**（30MB閾値厳守）
-   - 30MB以下の小テーブルのみBROADCAST適用
-   - BROADCASTヒント句は必ずSELECT文の直後に配置
-   - BROADCASTヒントには必ずテーブル名/エイリアス名を指定（`/*+ BROADCAST(table_name) */`）
+5. **🎯 JOIN戦略最適化**
+   - 小テーブルを先に処理する効率的なJOIN順序
+   - Sparkの自動最適化を活用したJOIN戦略
+   - 中間結果のサイズ最小化
 
 6. **💾 メモリ効率化**
    - 不要なカラムの除去
@@ -7028,17 +7029,18 @@ FROM (
 - プレースホルダー（...、[省略]、空白など）は一切使用しないでください
 - オリジナルクエリのすべてのSELECT項目を保持してください
 - **🚨 DISTINCT句の絶対保持**: 元のクエリにDISTINCT句がある場合は、**必ずDISTINCT句を保持**してください
-- **ヒント句追加時のDISTINCT保持**: BROADCASTヒントやREPARTITIONヒントを追加する際も、DISTINCT句は絶対に削除しないでください
+- **最適化時のDISTINCT保持**: REPARTITIONヒントを追加する際も、DISTINCT句は絶対に削除しないでください
 - 元のクエリが長い場合でも、すべてのカラムを省略せずに記述してください
 - 実際に実行できる完全なSQLクエリのみを出力してください
 - 元のクエリと同じアウトプットになることを厳守してください
 
-【🚨 BROADCASTヒント配置の厳格なルール - 構文エラー防止】
+【🚨 最適化における構文エラー防止】
 **絶対に守るべき文法ルール（構文エラー防止のため必須）:**
 
-✅ **正しい配置（必須）:**
+✅ **REPARTITIONヒントの正しい配置:**
 ```sql
-SELECT /*+ BROADCAST(table_name) */
+-- REPARTITIONヒントはメインクエリのSELECT直後に配置
+SELECT /*+ REPARTITION(200, column_name) */
   column1, column2, ...
 FROM table1 t1
   JOIN table2 t2 ON t1.id = t2.id
@@ -7047,106 +7049,16 @@ FROM table1 t1
 ✅ **DISTINCT句との正しい組み合わせ（絶対必須）:**
 ```sql
 -- 🚨 重要: DISTINCT句は必ずヒント句の後に配置
-SELECT /*+ BROADCAST(table_name) */ DISTINCT
+SELECT /*+ REPARTITION(200, column_name) */ DISTINCT
   cs.ID, cs.column1, cs.column2, ...
 FROM table1 cs
   JOIN table2 t2 ON cs.id = t2.id
-
--- 複数ヒントとDISTINCTの組み合わせ
-SELECT /*+ REPARTITION(200), BROADCAST(small_table) */ DISTINCT
-  t1.column1, t2.column2
-FROM table1 t1
-  JOIN table2 t2 ON t1.id = t2.id
 ```
 
-❌ **絶対に禁止される誤った配置（構文エラーの原因）:**
-```sql
--- これらは全て文法エラーになります
-FROM table1 /*+ BROADCAST(table1) */
-JOIN /*+ BROADCAST(table2) */ table2 ON ...
-WHERE /*+ BROADCAST(table1) */ ...
--- 🚨 特に重要: サブクエリ内部へのBROADCASTヒント配置は禁止
-LEFT JOIN (
-  SELECT /*+ BROADCAST(COUPON) */ distinct  -- ❌ 間違い: サブクエリ内部配置
-    qtz_receipt_id
-  FROM prd_delta.qtz_s3_etl.fm_coupon_pos COUPON
-) COUPON ON ...
-```
-
-**🚨 構文エラー防止のための必須確認事項:**
-1. **BROADCASTヒントは必ずメインクエリの最初のSELECT文の直後のみ**
-2. **サブクエリ、CTE、JOINサブクエリ内部には絶対に配置しない**
-3. **FROM句、JOIN句、WHERE句内には絶対に配置しない**
-4. **複数のBROADCASTヒントは1つのメインクエリSELECT直後に統合する**
-5. **BROADCASTヒントには必ずテーブル名またはエイリアス名を指定する**
-
-**重要な配置ルール:**
-1. **ヒントは必ずメインクエリのSELECT文の直後**に配置
+**🚨 構文エラー防止のための基本ルール:**
+1. **ヒントは必ずメインクエリのSELECT文の直後に配置**
 2. **FROM句、JOIN句、WHERE句内には絶対に配置しない**
-3. **🚨 サブクエリ内部のSELECT文には絶対に配置しない**
-4. **複数テーブルのBROADCAST時は全てメインクエリのSELECT直後に統合**
-5. **CTEを使用する場合は最終的なメインクエリのSELECT直後に配置**
-
-**🚨 サブクエリ使用時の正しい配置（絶対遵守）:**
-```sql
--- ✅ 正しい: メインクエリのSELECT直後に全てのBROADCASTヒントを統合
-SELECT /*+ REPARTITION(2316), BROADCAST(COUPON) */
-  retail_item_name, qtz_item_id, ...
-FROM prd_public.public.dmp_id_pos POS
-  LEFT JOIN (
-    SELECT distinct  -- ✅ 正しい: サブクエリ内部にはヒントなし
-      qtz_receipt_id
-    FROM prd_delta.qtz_s3_etl.fm_coupon_pos COUPON
-    WHERE dt between '20240418' and '20250417'
-  ) COUPON ON POS.qtz_receipt_id = COUPON.qtz_receipt_id
-WHERE dt between '20240418' and '20250417'
-```
-
-**❌ 絶対に禁止される間違った配置:**
-```sql
--- ❌ 間違い: サブクエリ内部にBROADCASTヒント配置
-SELECT /*+ REPARTITION(2316) */
-  retail_item_name, qtz_item_id, ...
-FROM prd_public.public.dmp_id_pos POS
-  LEFT JOIN (
-    SELECT /*+ BROADCAST(COUPON) */ distinct  -- ❌ 禁止: サブクエリ内部配置
-      qtz_receipt_id
-    FROM prd_delta.qtz_s3_etl.fm_coupon_pos COUPON
-  ) COUPON ON ...
-```
-
-**複数テーブルBROADCAST例:**
-```sql
-SELECT /*+ BROADCAST(table1, table2) */
-  t1.column1, t2.column2
-FROM table1 t1
-  JOIN table2 t2 ON t1.id = t2.id
-```
-
-**CTEでのBROADCAST例:**
-```sql
-WITH cte1 AS (
-  SELECT  -- ✅ 正しい: CTE内部にはヒントなし
-    column1, column2
-  FROM table1
-)
-SELECT /*+ BROADCAST(table2) */  -- ✅ 正しい: メインクエリのSELECT直後に配置
-  c.column1, t.column2
-FROM cte1 c
-  JOIN table2 t ON c.id = t.id
-```
-
-**🚨 Spark/Databricks SQLヒント解析の重要な仕様:**
-- ヒントはSELECT文の直後でのみ解析される
-- サブクエリ内部のヒントは、外側のクエリから参照されるテーブルエイリアスが解析時に未定義のため無視される
-- 複数のテーブルに対するBROADCASTヒントは、メインクエリのSELECT直後に統合することで全て有効になる
-
-**🚨 ヒント構文の重要な注意点:**
-- 複数のヒント種類はカンマ区切りで指定: `/*+ REPARTITION(100), BROADCAST(table1) */` ✅
-- BROADCASTヒントには必ずテーブル名/エイリアス名を指定: `/*+ BROADCAST(table_name) */` ✅
-- テーブル名なしのBROADCASTヒントは無効: `/*+ BROADCAST */` ❌
-- 同一ヒント内の複数パラメータはカンマ区切り: `/*+ BROADCAST(table1, table2) */` ✅
-- 異なるヒント種類の組み合わせはカンマ区切り: `/*+ REPARTITION(200), BROADCAST(small_table), COALESCE(1) */` ✅
+3. **REPARTITIONヒントには適切なパーティション数とカラム名を指定**
 
 【出力形式】
 ## 🚀 処理速度重視の最適化されたSQL
@@ -7154,59 +7066,43 @@ FROM cte1 c
 **適用した最適化手法**:
 - [具体的な最適化手法のリスト]
 - [REPARTITIONヒントの適用詳細（スピル検出時のみ）]
-- [BROADCASTヒントの適用詳細 - SELECT直後配置]
-- [BROADCAST結合優先とREPARTITION順序最適化の詳細]
+- [JOIN順序最適化の詳細]
 - [CTE構造による段階的最適化の適用詳細]
 - [推定される性能改善効果]
 
 **🚨 構文エラー防止の最終確認**:
-- ✅ 全てのBROADCASTヒントがメインクエリの最初のSELECT文の直後に配置されている
-- ✅ サブクエリ、CTE、JOINサブクエリ内部にBROADCASTヒントが配置されていない
+- ✅ REPARTITIONヒントは適切にメインクエリのSELECT直後に配置されている
 - ✅ FROM句、JOIN句、WHERE句内にヒントが配置されていない
-- ✅ BROADCASTヒントに必ずテーブル名/エイリアス名が指定されている
-- ✅ REPARTITIONヒントは適切なサブクエリ内部に配置されている
-- ✅ 複数ヒントはカンマ区切りで指定されている
+- ✅ REPARTITIONヒントには適切なパーティション数とカラム名が指定されている
 - ✅ **DISTINCT句が元のクエリにある場合は必ず保持されている**
 - ✅ **ヒント句追加時にDISTINCT句が削除されていない**
-- ✅ **DISTINCT句がヒント句の直後に正しく配置されている（例: SELECT /*+ BROADCAST(table) */ DISTINCT）**
+- ✅ **DISTINCT句がヒント句の直後に正しく配置されている**
 - ✅ プレースホルダー（...、[省略]等）が一切使用されていない
 - ✅ 完全なSQL構文になっている（不完全なクエリではない）
 - ✅ NULLリテラルが適切な型でキャストされている
-- ✅ BROADCAST結合を優先し、REPARTITIONで効果を妨げていない
-- ✅ 必要に応じてCTE構造でBROADCAST結合後にREPARTITIONを配置している
+- ✅ JOIN順序が効率的に最適化されている
 - ✅ スピル回避と並列度向上の両方を考慮した構造になっている
 
 ```sql
--- 🚨 重要: BROADCASTヒントは必ずメインクエリの最初のSELECT文の直後に配置
--- 例: SELECT /*+ BROADCAST(table_name) */ column1, column2, ...
--- 複数ヒント例（スピル検出時のみ）: SELECT /*+ REPARTITION(100), BROADCAST(small_table) */ column1, column2, ...
--- 🚨 DISTINCT句保持例: SELECT /*+ BROADCAST(table_name) */ DISTINCT cs.ID, cs.column1, ...
--- 🚨 複数ヒント+DISTINCT例: SELECT /*+ REPARTITION(200), BROADCAST(small_table) */ DISTINCT t1.column1, t2.column2, ...
--- 無効な例: SELECT /*+ BROADCAST */ column1, column2, ... (テーブル名なし - 無効)
--- 🚨 REPARTITIONヒントはサブクエリ内部に配置: SELECT ... FROM (SELECT /*+ REPARTITION(200, join_key) */ ... FROM table) ...
+-- 🚨 重要: REPARTITIONヒントはメインクエリのSELECT文の直後に配置
+-- 例: SELECT /*+ REPARTITION(200, column_name) */ column1, column2, ...
+-- 🚨 DISTINCT句保持例: SELECT /*+ REPARTITION(200, column_name) */ DISTINCT cs.ID, cs.column1, ...
+-- 🚨 REPARTITIONヒントの適切な配置: SELECT /*+ REPARTITION(200, join_key) */ column1, column2, ...
 [完全なSQL - すべてのカラム・CTE・テーブル名を省略なしで記述]
 ```
 
 ## 改善ポイント
 [3つの主要改善点]
 
-## BROADCAST適用根拠（30MB閾値基準）
-[BROADCASTヒント適用の詳細根拠]
-- 📏 Spark閾値: 30MB（非圧縮、spark.databricks.optimizer.autoBroadcastJoinThreshold）
-- 🎯 適用テーブル: [テーブル名]
-  - 非圧縮推定サイズ: [XX]MB
-  - 圧縮推定サイズ: [YY]MB
-  - 推定圧縮率: [ZZ]x
-  - ファイル形式: [parquet/delta/等]
-  - 推定根拠: [行数・データ読み込み量ベース]
-- ⚖️ 判定結果: [strongly_recommended/conditionally_recommended/not_recommended]
-- 🔍 閾値適合性: [30MB以下で適合/30MB超過で非適合]
-- 💾 メモリ影響: [推定メモリ使用量]MB がワーカーノードにブロードキャスト
+## JOIN最適化の根拠
+[JOIN順序最適化の詳細根拠]
+- 📏 テーブルサイズベースの最適化: 小テーブルから大テーブルへの効率的結合順序
+- 🎯 最適化対象テーブル: [テーブル名リスト]
+- ⚖️ JOIN戦略: Sparkの自動最適化を活用した効率的な結合処理
 - 🚀 期待効果: [ネットワーク転送量削減・JOIN処理高速化・シャッフル削減など]
-- ✅ **ヒント句配置**: SELECT文の直後に `/*+ BROADCAST(table_name) */` を正しく配置（テーブル名必須）
 
 ## 期待効果  
-[実行時間・メモリ・スピル改善の見込み（BROADCAST効果を含む）]
+[実行時間・メモリ・スピル改善の見込み（JOIN最適化効果を含む）]
 """
 
     # 設定されたLLMプロバイダーを使用
@@ -10449,8 +10345,8 @@ def generate_improved_query_for_performance_degradation(original_query: str, ana
 【🎯 パフォーマンス改善の重要な方針】
 
 1. **🚨 過剰最適化の是正**:
-   - BROADCASTヒントの適用を慎重に見直し
-   - 大きなテーブル（>30MB）へのBROADCAST適用を削除
+           - JOIN順序の効率化
+           - 効率的でないJOIN順序の見直し
    - 効果的でないヒントは積極的に削除
 
 2. **⚡ JOIN効率化**:
@@ -10572,7 +10468,6 @@ def generate_optimized_query_with_error_feedback(original_query: str, analysis_r
 ```
 
 **⚠️ 重要**: 上記の最適化クエリに含まれる以下の要素は必ず保持してください：
-- **BROADCASTヒント**: `/*+ BROADCAST(table_name) */`
 - **REPARTITIONヒント**: `/*+ REPARTITION(数値, カラム名) */`
 - **その他の最適化ヒント**: COALESCE、CACHE等
 - **最適化手法**: CTE構造、結合順序、フィルタープッシュダウン等
@@ -10580,7 +10475,7 @@ def generate_optimized_query_with_error_feedback(original_query: str, analysis_r
 
 **🎯 エラー修正の方針**: 
 - エラー箇所のみを修正し、最適化要素は全て保持
-- ヒント句の配置ルールは厳守（BROADCASTはメインクエリSELECT直後等）
+- ヒント句の配置ルールは厳守（REPARTITIONはメインクエリSELECT直後等）
 """
 
     # 🚨 NEW: エラーメッセージ解析による詳細修正指示生成
@@ -10645,7 +10540,7 @@ def generate_optimized_query_with_error_feedback(original_query: str, analysis_r
 
 【🔧 エラー修正の重要な指針】
 1. **🚀 最適化要素の絶対保持（最重要）**:
-   - **初回生成されたBROADCASTヒントを必ず保持**: `/*+ BROADCAST(table_name) */`
+   - **初回生成されたJOIN順序最適化を必ず保持**
    - **初回生成されたREPARTITIONヒントを必ず保持**: `/*+ REPARTITION(数値, カラム) */`
    - **その他の最適化ヒントも全て保持**: COALESCE、CACHE等
    - **CTE構造や結合順序などの最適化設計を維持**
@@ -10761,8 +10656,8 @@ FROM store_sales ss
 - [具体的なエラー修正箇所]
 
 **保持した最適化要素**:
-- [保持されたBROADCASTヒント]
 - [保持されたREPARTITIONヒント]
+- [保持されたJOIN順序最適化]
 - [保持されたその他の最適化手法]
 
 ```sql
@@ -11071,7 +10966,7 @@ def analyze_degradation_causes(performance_comparison: Dict[str, Any], original_
                     
                     if join_increase_ratio > 1.5:  # 50%以上のJOIN増加
                         degradation_analysis['fix_instructions'].extend([
-                            "BROADCASTヒントの過剰適用を削減してください",
+                            "JOIN順序の効率化を検討してください",
                             "元のJOIN順序を尊重し、大幅な構造変更を避けてください",
                             "不要なサブクエリ化によるJOIN重複を防いでください",
                             "CTE展開によるJOIN増加を避け、元の構造を保持してください"
@@ -11083,8 +10978,8 @@ def analyze_degradation_causes(performance_comparison: Dict[str, Any], original_
                     degradation_analysis['primary_cause'] = 'cost_increase'
                 degradation_analysis['specific_issues'].append('総実行コストの悪化')
                 degradation_analysis['fix_instructions'].extend([
-                    "BROADCASTヒントの適用対象を30MB以下の小テーブルに限定してください",
-                    "大きなテーブルへのBROADCAST適用を避けてください",
+                    "小テーブルを効率的にJOINで処理してください",
+                                         "大きなテーブルのJOIN順序を最適化してください",
                     "REPARTITIONヒントの配置位置を見直してください"
                 ])
             
