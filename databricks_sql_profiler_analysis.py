@@ -10715,26 +10715,21 @@ def compare_query_performance(original_explain_cost: str, optimized_explain_cost
         if original_metrics['total_rows'] > 0:
             comparison_result['memory_usage_ratio'] = optimized_metrics['total_rows'] / original_metrics['total_rows']
         
-        # 判定閾値の設定（安定性向上: マージン導入）
-        COST_DEGRADATION_THRESHOLD = 1.15  # 15%以上のコスト増加で悪化判定（旧: 20%）
-        MEMORY_DEGRADATION_THRESHOLD = 1.25  # 25%以上のメモリ増加で悪化判定（旧: 30%）
-        COST_IMPROVEMENT_THRESHOLD = 0.90  # 10%以上の削減で改善判定（旧: 5%）
-        MEMORY_IMPROVEMENT_THRESHOLD = 0.90  # 10%以上の削減で改善判定（旧: 5%）
+        # 🚨 修正された判定閾値（境界値不整合解決）
+        COST_DEGRADATION_THRESHOLD = 1.10   # 10%以上のコスト増加で悪化判定（明確化）
+        MEMORY_DEGRADATION_THRESHOLD = 1.15 # 15%以上のメモリ増加で悪化判定（明確化）
+        COST_IMPROVEMENT_THRESHOLD = 0.95   # 5%以上の削減で改善判定（明確化）
+        MEMORY_IMPROVEMENT_THRESHOLD = 0.95 # 5%以上の削減で改善判定（明確化）
         
-        # 🎯 判定安定化マージン（境界値付近での揺れを防止）
-        STABILITY_MARGIN = 0.03  # ±3%のマージン
-        
-        # パフォーマンス悪化検出
+        # パフォーマンス悪化検出（マージンなしで明確な判定）
         degradation_factors = []
         
-        # 🎯 安定化マージンを考慮した判定（揺れ防止）
-        effective_cost_threshold = COST_DEGRADATION_THRESHOLD + STABILITY_MARGIN
-        if comparison_result['total_cost_ratio'] > effective_cost_threshold:
-                        degradation_factors.append(f"総実行コスト悪化: {comparison_result['total_cost_ratio']:.2f}倍（閾値: {effective_cost_threshold:.2f}）")
+        # 🎯 明確な悪化判定（境界値の曖昧さを排除）
+        if comparison_result['total_cost_ratio'] > COST_DEGRADATION_THRESHOLD:
+            degradation_factors.append(f"総実行コスト悪化: {comparison_result['total_cost_ratio']:.2f}倍（閾値: {COST_DEGRADATION_THRESHOLD:.2f}）")
             
-        effective_memory_threshold = MEMORY_DEGRADATION_THRESHOLD + STABILITY_MARGIN
-        if comparison_result['memory_usage_ratio'] > effective_memory_threshold:
-            degradation_factors.append(f"メモリ使用量悪化: {comparison_result['memory_usage_ratio']:.2f}倍（閾値: {effective_memory_threshold:.2f}）")
+        if comparison_result['memory_usage_ratio'] > MEMORY_DEGRADATION_THRESHOLD:
+            degradation_factors.append(f"メモリ使用量悪化: {comparison_result['memory_usage_ratio']:.2f}倍（閾値: {MEMORY_DEGRADATION_THRESHOLD:.2f}）")
         
         # JOIN操作数の大幅増加チェック
         if (optimized_metrics['join_operations'] > original_metrics['join_operations'] * 1.5):
@@ -10750,19 +10745,28 @@ def compare_query_performance(original_explain_cost: str, optimized_explain_cost
             # 悪化ではないが、改善/同等の詳細判定
             performance_factors = []
             
+            # 🚨 修正された詳細判定（境界値の整合性確保）
             # 実行コストの詳細判定
             if comparison_result['total_cost_ratio'] < COST_IMPROVEMENT_THRESHOLD:
                 performance_factors.append(f"実行コスト改善: {(1-comparison_result['total_cost_ratio'])*100:.1f}%削減")
-            elif comparison_result['total_cost_ratio'] > 1.05:  # 5%以上の増加
-                performance_factors.append(f"実行コスト軽微悪化: {(comparison_result['total_cost_ratio']-1)*100:.1f}%増加（許容範囲）")
+            elif comparison_result['total_cost_ratio'] >= 1.02:  # 2%以上の増加（明確化）
+                cost_increase_pct = (comparison_result['total_cost_ratio']-1)*100
+                if comparison_result['total_cost_ratio'] > COST_DEGRADATION_THRESHOLD:
+                    performance_factors.append(f"実行コスト悪化: {cost_increase_pct:.1f}%増加（要注意）")
+                else:
+                    performance_factors.append(f"実行コスト軽微増加: {cost_increase_pct:.1f}%増加（許容範囲）")
             else:
                 performance_factors.append(f"実行コスト同等: {comparison_result['total_cost_ratio']:.2f}倍（変化なし）")
                 
             # メモリ使用量の詳細判定
             if comparison_result['memory_usage_ratio'] < MEMORY_IMPROVEMENT_THRESHOLD:
                 performance_factors.append(f"メモリ使用量改善: {(1-comparison_result['memory_usage_ratio'])*100:.1f}%削減")
-            elif comparison_result['memory_usage_ratio'] > 1.05:  # 5%以上の増加
-                performance_factors.append(f"メモリ使用量軽微悪化: {(comparison_result['memory_usage_ratio']-1)*100:.1f}%増加（許容範囲）")
+            elif comparison_result['memory_usage_ratio'] >= 1.02:  # 2%以上の増加（明確化）
+                memory_increase_pct = (comparison_result['memory_usage_ratio']-1)*100
+                if comparison_result['memory_usage_ratio'] > MEMORY_DEGRADATION_THRESHOLD:
+                    performance_factors.append(f"メモリ使用量悪化: {memory_increase_pct:.1f}%増加（要注意）")
+                else:
+                    performance_factors.append(f"メモリ使用量軽微増加: {memory_increase_pct:.1f}%増加（許容範囲）")
             else:
                 performance_factors.append(f"メモリ使用量同等: {comparison_result['memory_usage_ratio']:.2f}倍（変化なし）")
             
@@ -10772,16 +10776,25 @@ def compare_query_performance(original_explain_cost: str, optimized_explain_cost
             elif optimized_metrics['join_operations'] > original_metrics['join_operations']:
                 performance_factors.append(f"JOIN操作増加: {original_metrics['join_operations']} → {optimized_metrics['join_operations']}操作（軽微）")
             
-            # 総合判定メッセージの決定
+            # 🚨 修正された総合判定（論理的一貫性確保）
             has_improvement = any("改善" in factor for factor in performance_factors)
-            has_degradation = any("軽微悪化" in factor for factor in performance_factors)
+            has_cost_degradation = any("実行コスト悪化" in factor for factor in performance_factors)
+            has_memory_degradation = any("メモリ使用量悪化" in factor for factor in performance_factors)
+            has_minor_increase = any("軽微増加" in factor for factor in performance_factors)
             
-            if has_improvement and not has_degradation:
+            # 悪化がある場合は必ず適切に判定
+            if has_cost_degradation or has_memory_degradation:
+                performance_factors.insert(0, "❌ パフォーマンス悪化を検出（元クエリ推奨）")
+                # 🚨 悪化検出時は推奨も元クエリに変更
+                comparison_result['performance_degradation_detected'] = True
+                comparison_result['is_optimization_beneficial'] = False  
+                comparison_result['recommendation'] = 'use_original'
+            elif has_improvement and not has_minor_increase:
                 performance_factors.insert(0, "✅ 総合的にパフォーマンス改善を確認")
-            elif has_degradation and not has_improvement:
-                performance_factors.insert(0, "⚠️ 軽微なパフォーマンス悪化（許容範囲内）")
-            elif has_improvement and has_degradation:
-                performance_factors.insert(0, "🔄 パフォーマンストレードオフ（一部改善、一部悪化）")
+            elif has_minor_increase and not has_improvement:
+                performance_factors.insert(0, "⚠️ 軽微なパフォーマンス増加（許容範囲内）")
+            elif has_improvement and has_minor_increase:
+                performance_factors.insert(0, "🔄 パフォーマンストレードオフ（一部改善、一部増加）")
             else:
                 performance_factors.insert(0, "➖ パフォーマンス同等（大きな変化なし）")
             
