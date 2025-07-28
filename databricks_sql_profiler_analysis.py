@@ -11151,7 +11151,7 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
         
         # 前回の試行結果に基づく修正指示を生成
         fix_instructions = ""
-        if attempt_num > 1:
+        if attempt_num > 1 and optimization_attempts:
             previous_attempt = optimization_attempts[-1]
             if previous_attempt.get('degradation_analysis'):
                 degradation_analysis = previous_attempt['degradation_analysis']
@@ -11354,6 +11354,28 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
             else:
                 print("❌ EXPLAIN結果も不足のため、パフォーマンス評価不可")
                 performance_comparison = None
+                
+        # 🚨 緊急修正: パフォーマンス評価が完全に失敗した場合のハンドリング
+        if performance_comparison is None:
+            print(f"🚨 試行{attempt_num}: パフォーマンス評価が不可能なため、次の試行に進みます")
+            
+            optimization_attempts.append({
+                'attempt': attempt_num,
+                'status': 'performance_evaluation_failed',
+                'optimized_query': current_query,
+                'performance_comparison': None,
+                'error': 'EXPLAIN COST実行失敗またはフォールバック評価失敗',
+                'cost_ratio': None,
+                'memory_ratio': None
+            })
+            
+            # 最後の試行でない場合は次の改善を試行
+            if attempt_num < max_optimization_attempts:
+                print(f"🔄 試行{attempt_num + 1}でパフォーマンス評価の再試行を行います")
+                continue
+            else:
+                print(f"❌ 最大試行回数({max_optimization_attempts})に到達、元クエリを使用")
+                break
         
         elif (original_cost_success and optimized_cost_success):
             
@@ -11973,7 +11995,9 @@ def execute_explain_and_save_to_file(original_query: str, query_type: str = "ori
             "TABLE_OR_VIEW_NOT_FOUND",
             "COLUMN_NOT_FOUND",
             "UNRESOLVED_COLUMN",
-            "[UNRESOLVED_COLUMN"
+            "[UNRESOLVED_COLUMN",
+            "UNRESOLVED_COLUMN.WITH_SUGGESTION",
+            "[UNRESOLVED_COLUMN.WITH_SUGGESTION]"
         ]
         
         # 🚨 重要: EXPLAIN結果とEXPLAIN COST結果の両方をエラーチェック
@@ -12168,7 +12192,11 @@ def execute_explain_and_save_to_file(original_query: str, query_type: str = "ori
             "PARSE_SYNTAX_ERROR",
             "INVALID_IDENTIFIER",
             "TABLE_OR_VIEW_NOT_FOUND",
-            "COLUMN_NOT_FOUND"
+            "COLUMN_NOT_FOUND",
+            "UNRESOLVED_COLUMN",
+            "[UNRESOLVED_COLUMN",
+            "UNRESOLVED_COLUMN.WITH_SUGGESTION",
+            "[UNRESOLVED_COLUMN.WITH_SUGGESTION]"
         ]
         
         # 真の致命的エラーかチェック
