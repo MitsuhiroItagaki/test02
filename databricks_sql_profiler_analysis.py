@@ -8195,16 +8195,23 @@ def summarize_explain_results_with_llm(explain_content: str, explain_cost_conten
         }
 
 
-def format_sql_content_for_report(content: str) -> str:
+def format_sql_content_for_report(content: str, filename: str = "") -> str:
     """
     SQLファイル内容またはLLMレスポンスをレポート用に適切にフォーマット
+    長いクエリは適切に省略してファイル参照を案内
     
     Args:
         content: SQLファイル内容またはLLMレスポンス
+        filename: SQLファイル名（省略時の参照用）
         
     Returns:
         str: レポート用にフォーマットされた内容
     """
+    # 省略判定の基準
+    MAX_LINES_IN_REPORT = 30
+    MAX_CHARS_IN_REPORT = 3000
+    PREVIEW_LINES = 15
+    
     # SQLファイル内容の場合（-- で始まるコメントがある場合）
     if content.startswith('--') and 'USE CATALOG' in content:
         # SQLファイル内容の場合は、適切なフォーマットで表示
@@ -8223,12 +8230,39 @@ def format_sql_content_for_report(content: str) -> str:
                 # コメント行は残す（ヘッダー情報）
                 continue
         
-        # フォーマットされた内容を返す
+        # 長さ判定と省略処理
         if sql_lines:
-            return f"""**🚀 動作保証済み最適化クエリ (SQLファイルと同一):**
+            full_sql = chr(10).join(sql_lines)
+            needs_truncation = (len(sql_lines) > MAX_LINES_IN_REPORT or 
+                              len(full_sql) > MAX_CHARS_IN_REPORT)
+            
+            if needs_truncation:
+                # 省略版を作成
+                preview_lines = sql_lines[:PREVIEW_LINES]
+                omitted_lines = len(sql_lines) - PREVIEW_LINES
+                
+                return f"""**🚀 動作保証済み最適化クエリ (SQLファイルと同一):**
 
 ```sql
-{chr(10).join(sql_lines)}
+{chr(10).join(preview_lines)}
+
+-- ... (省略: あと{omitted_lines}行)
+-- 完全版は {filename if filename else 'output_optimized_query_*.sql'} ファイルを参照
+```
+
+💡 このクエリは実際のEXPLAIN実行で動作確認済みです。  
+📂 **完全版**: `{filename if filename else 'output_optimized_query_*.sql'}` ファイルをご確認ください。
+
+**📊 クエリ概要:**
+- 総行数: {len(sql_lines)}行
+- 表示: 最初の{PREVIEW_LINES}行のみ
+- 省略: {omitted_lines}行"""
+            else:
+                # 短い場合は全文表示
+                return f"""**🚀 動作保証済み最適化クエリ (SQLファイルと同一):**
+
+```sql
+{full_sql}
 ```
 
 💡 このクエリは実際のEXPLAIN実行で動作確認済みです。"""
@@ -8241,13 +8275,33 @@ def format_sql_content_for_report(content: str) -> str:
     
     # LLMレスポンスの場合
     else:
-        # ```sql``` ブロックがあるかチェック
-        if '```sql' in content:
-            return f"""**💡 LLM最適化分析:**
+        # 長いLLMレスポンスも省略対象
+        if len(content) > MAX_CHARS_IN_REPORT:
+            preview_content = content[:MAX_CHARS_IN_REPORT]
+            omitted_chars = len(content) - MAX_CHARS_IN_REPORT
+            
+            if '```sql' in content:
+                return f"""**💡 LLM最適化分析 (省略版):**
+
+{preview_content}...
+
+**省略情報:** あと{omitted_chars}文字  
+📝 注意: 上記は分析結果の一部です。実際の実行用クエリは `{filename if filename else 'output_optimized_query_*.sql'}` ファイルを参照してください。"""
+            else:
+                return f"""**💡 LLM最適化分析 (省略版):**
+
+{preview_content}...
+
+**省略情報:** あと{omitted_chars}文字  
+📝 注意: 上記は分析結果の一部です。実際の実行用クエリは `{filename if filename else 'output_optimized_query_*.sql'}` ファイルを参照してください。"""
+        else:
+            # 短い場合は全文表示
+            if '```sql' in content:
+                return f"""**💡 LLM最適化分析:**
 
 {content}"""
-        else:
-            return f"""**💡 LLM最適化分析:**
+            else:
+                return f"""**💡 LLM最適化分析:**
 
 {content}
 
@@ -8274,10 +8328,18 @@ def generate_comprehensive_optimization_report(query_id: str, optimized_result: 
     explain_cost_section = ""
     explain_enabled = globals().get('EXPLAIN_ENABLED', 'N')
     
+    # 📊 最新のSQLファイル名を検索（省略表示時の参照用 - 常に実行）
+    import glob
+    import os
+    
+    optimized_sql_files = glob.glob("output_optimized_query_*.sql")
+    latest_sql_filename = ""
+    if optimized_sql_files:
+        # 最新のファイルを取得（ファイル名のタイムスタンプでソート）
+        optimized_sql_files.sort(reverse=True)
+        latest_sql_filename = optimized_sql_files[0]
+    
     if explain_enabled.upper() == 'Y':
-        import glob
-        import os
-        
         print("🔍 包括レポート用: EXPLAIN + EXPLAIN COST結果ファイルを検索中...")
         
         # 1. 最新のEXPLAIN結果ファイルを検索（新しいファイル名パターン対応）
@@ -8547,8 +8609,8 @@ Statistical optimization has been executed (details available with DEBUG_ENABLED
             report += f"⚠️ TOP10処理時間分析の生成でエラーが発生しました: {str(e)}\n"
         
         # SQL最適化分析結果の追加
-        # 🚀 SQLファイル内容の場合は適切にフォーマット
-        formatted_sql_content = format_sql_content_for_report(optimized_result)
+        # 🚀 SQLファイル内容の場合は適切にフォーマット（省略機能付き）
+        formatted_sql_content = format_sql_content_for_report(optimized_result, latest_sql_filename)
         
         report += f"""
 
@@ -8740,8 +8802,8 @@ The following topics are analyzed for process evaluation:
 """
         
         # SQL最適化分析結果の追加（英語版）
-        # 🚀 SQLファイル内容の場合は適切にフォーマット
-        formatted_sql_content = format_sql_content_for_report(optimized_result)
+        # 🚀 SQLファイル内容の場合は適切にフォーマット（省略機能付き）
+        formatted_sql_content = format_sql_content_for_report(optimized_result, latest_sql_filename)
         
         report += f"""
 ## 🚀 4. SQL Optimization Analysis Results
