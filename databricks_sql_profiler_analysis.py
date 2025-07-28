@@ -10043,6 +10043,145 @@ def generate_optimized_query_with_error_feedback(original_query: str, analysis_r
         return f"LLM_ERROR: {error_msg}"
 
 
+def compare_query_performance(original_explain_cost: str, optimized_explain_cost: str) -> Dict[str, Any]:
+    """
+    EXPLAIN COST結果を比較してパフォーマンス悪化を検出
+    
+    Args:
+        original_explain_cost: 元クエリのEXPLAIN COST結果
+        optimized_explain_cost: 最適化クエリのEXPLAIN COST結果
+        
+    Returns:
+        Dict: パフォーマンス比較結果と推奨事項
+    """
+    comparison_result = {
+        'is_optimization_beneficial': True,
+        'performance_degradation_detected': False,
+        'total_cost_ratio': 1.0,
+        'memory_usage_ratio': 1.0,
+        'scan_cost_ratio': 1.0,
+        'join_cost_ratio': 1.0,
+        'recommendation': 'use_optimized',
+        'details': []
+    }
+    
+    try:
+        import re
+        
+        # コスト情報を抽出する関数
+        def extract_cost_metrics(explain_cost_text):
+            metrics = {
+                'total_size_bytes': 0,
+                'total_rows': 0,
+                'scan_operations': 0,
+                'join_operations': 0,
+                'memory_estimates': 0,
+                'shuffle_partitions': 0
+            }
+            
+            # サイズとメモリ使用量を抽出
+            size_patterns = [
+                r'size_bytes["\s]*[:=]\s*([0-9.]+)',
+                r'sizeInBytes["\s]*[:=]\s*([0-9.]+)',
+                r'(\d+\.?\d*)\s*[KMG]?iB',
+                r'(\d+\.?\d*)\s*[KMG]?B'
+            ]
+            
+            for pattern in size_patterns:
+                matches = re.findall(pattern, explain_cost_text, re.IGNORECASE)
+                for match in matches:
+                    try:
+                        size_val = float(match)
+                        metrics['total_size_bytes'] += size_val
+                    except:
+                        continue
+            
+            # 行数を抽出
+            row_patterns = [
+                r'rows["\s]*[:=]\s*([0-9]+)',
+                r'numRows["\s]*[:=]\s*([0-9]+)'
+            ]
+            
+            for pattern in row_patterns:
+                matches = re.findall(pattern, explain_cost_text, re.IGNORECASE)
+                for match in matches:
+                    try:
+                        metrics['total_rows'] += int(match)
+                    except:
+                        continue
+            
+            # スキャン・JOIN操作数をカウント
+            metrics['scan_operations'] = len(re.findall(r'Scan|FileScan|TableScan', explain_cost_text, re.IGNORECASE))
+            metrics['join_operations'] = len(re.findall(r'Join|HashJoin|SortMergeJoin', explain_cost_text, re.IGNORECASE))
+            
+            # シャッフルパーティション数
+            shuffle_matches = re.findall(r'partitions?["\s]*[:=]\s*([0-9]+)', explain_cost_text, re.IGNORECASE)
+            for match in shuffle_matches:
+                try:
+                    metrics['shuffle_partitions'] += int(match)
+                except:
+                    continue
+                    
+            return metrics
+        
+        # 元クエリと最適化クエリのメトリクス抽出
+        original_metrics = extract_cost_metrics(original_explain_cost)
+        optimized_metrics = extract_cost_metrics(optimized_explain_cost)
+        
+        # パフォーマンス比較（値が0の場合は1として計算）
+        if original_metrics['total_size_bytes'] > 0:
+            comparison_result['total_cost_ratio'] = optimized_metrics['total_size_bytes'] / original_metrics['total_size_bytes']
+        
+        if original_metrics['total_rows'] > 0:
+            comparison_result['memory_usage_ratio'] = optimized_metrics['total_rows'] / original_metrics['total_rows']
+        
+        # 悪化判定の閾値
+        COST_DEGRADATION_THRESHOLD = 1.3  # 30%以上のコスト増加
+        MEMORY_DEGRADATION_THRESHOLD = 1.5  # 50%以上のメモリ増加
+        
+        # パフォーマンス悪化検出
+        degradation_factors = []
+        
+        if comparison_result['total_cost_ratio'] > COST_DEGRADATION_THRESHOLD:
+            degradation_factors.append(f"総実行コスト悪化: {comparison_result['total_cost_ratio']:.2f}倍")
+            
+        if comparison_result['memory_usage_ratio'] > MEMORY_DEGRADATION_THRESHOLD:
+            degradation_factors.append(f"メモリ使用量悪化: {comparison_result['memory_usage_ratio']:.2f}倍")
+        
+        # JOIN操作数の大幅増加チェック
+        if (optimized_metrics['join_operations'] > original_metrics['join_operations'] * 1.5):
+            degradation_factors.append(f"JOIN操作数増加: {original_metrics['join_operations']} → {optimized_metrics['join_operations']}")
+        
+        # 悪化判定
+        if degradation_factors:
+            comparison_result['performance_degradation_detected'] = True
+            comparison_result['is_optimization_beneficial'] = False
+            comparison_result['recommendation'] = 'use_original'
+            comparison_result['details'] = degradation_factors
+        else:
+            # 改善効果の詳細
+            improvement_factors = []
+            
+            if comparison_result['total_cost_ratio'] < 0.9:
+                improvement_factors.append(f"実行コスト改善: {(1-comparison_result['total_cost_ratio'])*100:.1f}%削減")
+                
+            if comparison_result['memory_usage_ratio'] < 0.9:
+                improvement_factors.append(f"メモリ使用量改善: {(1-comparison_result['memory_usage_ratio'])*100:.1f}%削減")
+            
+            if optimized_metrics['join_operations'] < original_metrics['join_operations']:
+                improvement_factors.append(f"JOIN効率化: {original_metrics['join_operations']} → {optimized_metrics['join_operations']}操作")
+            
+            comparison_result['details'] = improvement_factors if improvement_factors else ["パフォーマンス改善を確認"]
+        
+    except Exception as e:
+        # エラー時は安全側に倒して元クエリを推奨
+        comparison_result['performance_degradation_detected'] = True
+        comparison_result['is_optimization_beneficial'] = False
+        comparison_result['recommendation'] = 'use_original'
+        comparison_result['details'] = [f"パフォーマンス比較エラーのため元クエリ使用: {str(e)}"]
+    
+    return comparison_result
+
 def execute_explain_with_retry_logic(original_query: str, analysis_result: str, metrics: Dict[str, Any], max_retries: int = 2) -> Dict[str, Any]:
     """
     EXPLAIN実行とエラー修正の再試行ロジック
@@ -10104,24 +10243,114 @@ def execute_explain_with_retry_logic(original_query: str, analysis_result: str, 
         if 'explain_file' in explain_result and 'error_file' not in explain_result:
             print(f"✅ 試行 {attempt_num} で成功しました！")
             
+            # 🔍 パフォーマンス悪化検出（EXPLAIN COST比較）
+            print("🔍 パフォーマンス悪化検出を実行中...")
+            
+            # 元クエリのEXPLAIN COST取得（存在しない場合は実行）
+            original_explain_cost_result = execute_explain_and_save_to_file(original_query, "original_performance_check")
+            
+            # 最適化クエリのEXPLAIN COST取得（存在しない場合は実行）
+            optimized_explain_cost_result = execute_explain_and_save_to_file(current_query, "optimized_performance_check")
+            
+            # 両方のEXPLAIN COSTが正常に取得できた場合のみ比較実行
+            performance_comparison = None
+            if ('explain_cost_file' in original_explain_cost_result and 
+                'explain_cost_file' in optimized_explain_cost_result and
+                'error_file' not in original_explain_cost_result and
+                'error_file' not in optimized_explain_cost_result):
+                
+                try:
+                    # EXPLAIN COSTファイル内容を読み込み
+                    with open(original_explain_cost_result['explain_cost_file'], 'r', encoding='utf-8') as f:
+                        original_cost_content = f.read()
+                    
+                    with open(optimized_explain_cost_result['explain_cost_file'], 'r', encoding='utf-8') as f:
+                        optimized_cost_content = f.read()
+                    
+                    # パフォーマンス比較実行
+                    performance_comparison = compare_query_performance(original_cost_content, optimized_cost_content)
+                    
+                    print(f"📊 パフォーマンス比較結果:")
+                    print(f"   - 実行コスト比: {performance_comparison['total_cost_ratio']:.2f}倍")
+                    print(f"   - メモリ使用比: {performance_comparison['memory_usage_ratio']:.2f}倍")
+                    print(f"   - 推奨: {performance_comparison['recommendation']}")
+                    
+                    for detail in performance_comparison['details']:
+                        print(f"   - {detail}")
+                    
+                    # パフォーマンス悪化が検出された場合
+                    if performance_comparison['performance_degradation_detected']:
+                        print("🚨 パフォーマンス悪化を検出！元クエリを使用します")
+                        
+                        # 元クエリでのファイル生成（パフォーマンス悪化防止）
+                        fallback_result = save_optimized_sql_files(
+                            original_query,
+                            f"# 🚨 パフォーマンス悪化検出のため元クエリを使用\n\n## 悪化要因\n{'; '.join(performance_comparison['details'])}\n\n## パフォーマンス比較結果\n- 実行コスト比: {performance_comparison['total_cost_ratio']:.2f}倍\n- メモリ使用比: {performance_comparison['memory_usage_ratio']:.2f}倍\n\n## 元のクエリ（最適化前）\n```sql\n{original_query}\n```",
+                            metrics,
+                            analysis_result
+                        )
+                        
+                        return {
+                            'final_status': 'performance_degradation_detected',
+                            'final_query': original_query,
+                            'total_attempts': attempt_num,
+                            'all_attempts': all_attempts,
+                            'explain_result': original_explain_cost_result,
+                            'optimized_result': optimized_query,
+                            'performance_comparison': performance_comparison,
+                            'fallback_reason': 'performance_degradation'
+                        }
+                    
+                    else:
+                        print("✅ パフォーマンス改善を確認。最適化クエリを使用します")
+                    
+                except Exception as e:
+                    print(f"⚠️ パフォーマンス比較でエラー発生: {str(e)}")
+                    print("🔄 安全のため元クエリを使用します")
+                    
+                    # エラー時も安全側に倒して元クエリを使用
+                    fallback_result = save_optimized_sql_files(
+                        original_query,
+                        f"# ⚠️ パフォーマンス比較エラーのため安全性を優先して元クエリを使用\n\n## エラー詳細\n{str(e)}\n\n## 元のクエリ\n```sql\n{original_query}\n```",
+                        metrics,
+                        analysis_result
+                    )
+                    
+                    return {
+                        'final_status': 'performance_comparison_error',
+                        'final_query': original_query,
+                        'total_attempts': attempt_num,
+                        'all_attempts': all_attempts,
+                        'explain_result': explain_result,
+                        'optimized_result': optimized_query,
+                        'fallback_reason': 'performance_comparison_error',
+                        'error_details': str(e)
+                    }
+            
+            else:
+                print("⚠️ EXPLAIN COST取得失敗のため、パフォーマンス比較をスキップ")
+                print("🔄 構文的に正常な最適化クエリを使用します")
+            
             # 成功記録
             attempt_record = {
                 'attempt': attempt_num,
                 'status': 'success',
                 'query': current_query,
                 'explain_file': explain_result.get('explain_file'),
-                'plan_lines': explain_result.get('plan_lines', 0)
+                'plan_lines': explain_result.get('plan_lines', 0),
+                'performance_comparison': performance_comparison
             }
             all_attempts.append(attempt_record)
             
-            # 最終結果
+            # 最終結果（パフォーマンス悪化なしの場合）
             return {
                 'final_status': 'success',
                 'final_query': current_query,
                 'total_attempts': attempt_num,
                 'all_attempts': all_attempts,
                 'explain_result': explain_result,
-                'optimized_result': optimized_query  # 元の完全なレスポンス
+                'optimized_result': optimized_query,  # 元の完全なレスポンス
+                'performance_comparison': performance_comparison
             }
         
         # エラー時の処理
