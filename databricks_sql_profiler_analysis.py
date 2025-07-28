@@ -2868,7 +2868,7 @@ print("✅ 関数定義完了: analyze_liquid_clustering_opportunities, save_liq
 def analyze_bottlenecks_with_llm(metrics: Dict[str, Any]) -> str:
     """
     包括的なパフォーマンス分析レポートを生成
-    セル33（TOP10プロセス）、セル35（Liquid Clustering）、セル47（最適化実行）の情報を統合
+    セル33（TOP10プロセス）、セル35（Liquid Clustering）、セル43（統合最適化実行）の情報を統合
     EXPLAIN + EXPLAIN COST結果も活用してより精密な分析を実行
     
     🚨 重要: パーセンテージ計算デグレ防止
@@ -3067,7 +3067,7 @@ def analyze_bottlenecks_with_llm(metrics: Dict[str, Any]) -> str:
     join_columns = extracted_data.get('join_columns', [])[:10]
     groupby_columns = extracted_data.get('groupby_columns', [])[:10]
     
-    # === 4. セル47: 詳細ボトルネック分析の取得 ===
+    # === 4. セル43: 統合最適化処理での詳細ボトルネック分析の取得 ===
     try:
         detailed_bottleneck = extract_detailed_bottleneck_analysis(metrics)
     except Exception as e:
@@ -7592,6 +7592,41 @@ def summarize_explain_results_with_llm(explain_content: str, explain_cost_conten
         # 要約結果を分割して返す
         print(f"✅ EXPLAIN + EXPLAIN COST要約完了: {len(summary_text):,} 文字")
         
+        # 🚨 DEBUG_ENABLED='Y'の場合、要約結果をファイルに保存
+        debug_enabled = globals().get('DEBUG_ENABLED', 'N')
+        if debug_enabled.upper() == 'Y':
+            try:
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                summary_filename = f"output_explain_summary_{query_type}_{timestamp}.md"
+                
+                # 要約結果をMarkdown形式で保存
+                summary_content = f"""# EXPLAIN + EXPLAIN COST要約結果 ({query_type})
+
+## 📊 基本情報
+- 生成日時: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+- クエリタイプ: {query_type}
+- 元サイズ: EXPLAIN({len(explain_content):,}文字) + EXPLAIN COST({len(explain_cost_content):,}文字) = {total_size:,}文字
+- 要約後サイズ: {len(summary_text):,}文字
+- 圧縮率: {total_size//len(summary_text) if len(summary_text) > 0 else 0}x
+
+## 🧠 LLM要約結果
+
+{summary_text}
+
+## 💰 統計情報抽出
+
+{extract_cost_statistics_from_explain_cost(explain_cost_content)}
+"""
+                
+                with open(summary_filename, 'w', encoding='utf-8') as f:
+                    f.write(summary_content)
+                
+                print(f"📄 要約結果を保存: {summary_filename}")
+                
+            except Exception as save_error:
+                print(f"⚠️ 要約結果の保存に失敗: {str(save_error)}")
+        
         return {
             'explain_summary': summary_text,
             'explain_cost_summary': summary_text,  # 統合要約として同じ内容
@@ -8258,21 +8293,26 @@ def refine_report_with_llm(raw_report: str, query_id: str) -> str:
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
         
-        # 🚨 LLMエラーレスポンスの検出
+        # 🚨 LLMエラーレスポンスの検出（精密化）
         if isinstance(refined_report, str):
-            error_indicators = [
-                "APIエラー:",
-                "Input is too long",
+            # より精密なエラー検出（レポート内容の絵文字と区別）
+            actual_error_indicators = [
+                "APIエラー: ステータスコード",
+                "Input is too long for requested model",
                 "Bad Request",
-                "❌",
-                "⚠️",
                 "タイムアウトエラー:",
                 "API呼び出しエラー:",
-                "レスポンス:",
-                '{"error_code":'
+                'レスポンス: {"error_code":',
+                "❌ APIエラー:",
+                "⚠️ APIエラー:"
             ]
             
-            is_error_response = any(indicator in refined_report for indicator in error_indicators)
+            # エラーメッセージの開始部分をチェック（より厳密）
+            is_error_response = any(
+                refined_report.strip().startswith(indicator) or 
+                f"\n{indicator}" in refined_report[:500]  # 先頭500文字以内でのエラーメッセージ
+                for indicator in actual_error_indicators
+            )
             
             if is_error_response:
                 print(f"❌ LLMレポート推敲でエラー検出: {refined_report[:200]}...")
@@ -9976,193 +10016,7 @@ else:
 
 print()
 
-# COMMAND ----------
 
-# MAGIC %md
-# MAGIC ## 🤖 従来のSQL最適化（参考） - コメントアウト
-# MAGIC
-# MAGIC このセルは新しい統合処理とは独立した従来の最適化処理です。
-# MAGIC 統合処理が失敗した場合やデバッグ目的で使用できます。
-# MAGIC
-# MAGIC **注意: 現在はコメントアウトされています。新しい統合処理を使用してください。**
-
-# COMMAND ----------
-
-# 🤖 従来のステップ2: LLMによるSQL最適化（参考） - コメントアウト
-# print("\n🤖 従来のステップ2: LLMによるSQL最適化（参考）")
-# print("-" * 40)
-
-# # 既存変数の確認
-# try:
-#     test_original_query = original_query
-#     test_analysis_result = analysis_result if 'analysis_result' in globals() else ""
-#     test_extracted_metrics = extracted_metrics if 'extracted_metrics' in globals() else {}
-#     
-#     print("📋 従来処理用の変数確認:")
-#     print(f"   original_query: {len(str(test_original_query))} 文字")
-#     print(f"   analysis_result: {len(str(test_analysis_result))} 文字")
-#     print(f"   extracted_metrics: {len(test_extracted_metrics)} 項目")
-#     
-# except NameError as e:
-#     print(f"⚠️ 必要な変数が見つかりません: {str(e)}")
-#     print("   メイン処理セクションを先に実行してください")
-
-# if 'original_query' in globals() and original_query.strip():
-#     print(f"🔄 従来の{LLM_CONFIG['provider'].upper()}最適化を実行中...")
-#     
-#     # thinking_enabled: Trueの場合にanalysis_resultがリストになることがあるため対応
-#     if 'analysis_result' in globals():
-#         if isinstance(analysis_result, list):
-#             # リストの場合は主要コンテンツのみを抽出してLLMに渡す
-#             analysis_result_str = extract_main_content_from_thinking_response(analysis_result)
-#         else:
-#             analysis_result_str = str(analysis_result)
-#     else:
-#         analysis_result_str = "分析結果が利用できません"
-#     
-#     traditional_optimized_result = generate_optimized_query_with_llm(
-#         original_query, 
-#         analysis_result_str, 
-#         extracted_metrics if 'extracted_metrics' in globals() else {}
-#     )
-    
-    # # thinking_enabled: Trueの場合にoptimized_resultがリストになることがあるため対応
-    # optimized_result_display = optimized_result
-    # if isinstance(optimized_result, list):
-    #     # 表示用は人間に読みやすい形式に変換
-    #     optimized_result_display = format_thinking_response(optimized_result)
-    #     # 主要コンテンツのみを抽出（後続処理用）
-    #     optimized_result = extract_main_content_from_thinking_response(optimized_result)
-    # 
-    # if optimized_result and not str(optimized_result).startswith("⚠️"):
-    #     print("✅ SQL最適化が完了しました")
-    #     print(f"📄 最適化結果の詳細:")
-    #     
-    #     # 最適化結果の詳細を表示（1000行まで）
-    #     lines = optimized_result_display.split('\n')
-    #     max_display_lines = 1000
-    #     
-    #     if len(lines) <= max_display_lines:
-    #         # 全行表示
-    #         for line in lines:
-    #             print(f"   {line}")
-    #     else:
-    #         # 1000行まで表示
-    #         for line in lines[:max_display_lines]:
-    #             print(f"   {line}")
-    #         print(f"   ... (残り {len(lines) - max_display_lines} 行は省略、詳細は保存ファイルを確認)")
-    #     
-    # else:
-    #     print(f"❌ SQL最適化に失敗しました")
-    #     print(f"   エラー: {optimized_result}")
-    #     optimized_result = "最適化の生成に失敗しました。手動での最適化を検討してください。"
-# else:
-#     print("⚠️ オリジナルクエリが空のため、最適化をスキップします")
-#     optimized_result = "オリジナルクエリが見つからないため、最適化できませんでした。"
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 💾 最適化結果の保存 - コメントアウト
-# MAGIC
-# MAGIC このセルでは以下の処理を実行します：
-# MAGIC - 最適化されたSQLクエリのファイル保存（接頭語: output_）
-# MAGIC - オリジナルクエリ、最適化クエリ、レポートの生成
-# MAGIC - 生成ファイルの詳細情報表示
-# MAGIC
-# MAGIC **注意: 現在はコメントアウトされています。新しい統合処理を使用してください。**
-
-# COMMAND ----------
-
-# 💾 ステップ3: 最適化結果の保存 - コメントアウト
-# print("\n💾 ステップ3: 最適化結果の保存")
-# print("-" * 40)
-
-# # 必要な変数が定義されているかチェックし、デフォルト値を設定
-# missing_variables = []
-
-# # original_query のチェック
-# try:
-#     original_query
-# except NameError:
-#     missing_variables.append("original_query")
-#     original_query = ""
-
-# # optimized_result のチェック  
-# try:
-#     optimized_result
-# except NameError:
-#     missing_variables.append("optimized_result (セル20を実行してください)")
-#     optimized_result = ""
-
-# # extracted_metrics のチェック
-# try:
-#     extracted_metrics
-# except NameError:
-#     missing_variables.append("extracted_metrics (セル12を実行してください)")
-#     # デフォルト値として最小限の構造を設定
-#     extracted_metrics = {
-#         'query_info': {'query_id': 'unknown'},
-#         'overall_metrics': {},
-#         'bottleneck_indicators': {}
-#     }
-
-# # analysis_result のチェック
-# try:
-#     analysis_result
-# except NameError:
-#     missing_variables.append("analysis_result")
-#     analysis_result = ""
-
-# if missing_variables:
-#     print("❌ 必要な変数が定義されていません:")
-#     for var in missing_variables:
-#         print(f"   • {var}")
-#     print("\n⚠️ 上記のセルを先に実行してから、このセルを再実行してください。")
-#     print("📋 正しい実行順序: セル11 → セル12 → ... → セル19 → セル20 → セル21")
-#     print("\n🔄 デフォルト値を使用して処理を継続します。")
-
-# # 変数が存在する（またはデフォルト値が設定された）場合の処理
-# if original_query.strip() and str(optimized_result).strip():
-#     print("📁 ファイル生成中...")
-#     
-#     try:
-#         saved_files = save_optimized_sql_files(
-#             original_query,
-#             optimized_result,
-#             extracted_metrics,
-#             analysis_result
-#         )
-#         
-#         print("✅ 以下のファイルを生成しました:")
-#         for file_type, filename in saved_files.items():
-#             file_type_jp = {
-#                 'original_file': 'オリジナルSQLクエリ',
-#                 'optimized_file': '最適化SQLクエリ',
-#                 'report_file': '最適化レポート'
-#             }
-#             print(f"   📄 {file_type_jp.get(file_type, file_type)}: {filename}")
-#         
-#         # ファイルサイズの確認
-#         import os
-#         print(f"\n📊 生成ファイルの詳細:")
-#         for file_type, filename in saved_files.items():
-#             if os.path.exists(filename):
-#                 file_size = os.path.getsize(filename)
-#                 print(f"   {filename}: {file_size:,} bytes")
-#             else:
-#                 print(f"   ⚠️ {filename}: ファイルが見つかりません")
-#         
-#     except Exception as e:
-#         print(f"❌ ファイル生成中にエラーが発生しました: {str(e)}")
-#         print("⚠️ 空のファイルリストを設定します。")
-#         saved_files = {}
-#         
-# else:
-#     print("⚠️ クエリまたは最適化結果が不完全なため、ファイル保存をスキップしました")
-#     saved_files = {}
-
-# 
 
 # COMMAND ----------
 # 
@@ -10280,21 +10134,26 @@ def refine_report_content_with_llm(report_content: str) -> str:
             print(f"❌ 未対応のLLMプロバイダー: {provider}")
             return report_content
         
-        # 🚨 LLMエラーレスポンスの検出
+        # 🚨 LLMエラーレスポンスの検出（精密化）
         if isinstance(refined_content, str):
-            error_indicators = [
-                "APIエラー:",
-                "Input is too long",
+            # より精密なエラー検出（レポート内容の絵文字と区別）
+            actual_error_indicators = [
+                "APIエラー: ステータスコード",
+                "Input is too long for requested model",
                 "Bad Request",
-                "❌",
-                "⚠️",
                 "タイムアウトエラー:",
                 "API呼び出しエラー:",
-                "レスポンス:",
-                '{"error_code":'
+                'レスポンス: {"error_code":',
+                "❌ APIエラー:",
+                "⚠️ APIエラー:"
             ]
             
-            is_error_response = any(indicator in refined_content for indicator in error_indicators)
+            # エラーメッセージの開始部分をチェック（より厳密）
+            is_error_response = any(
+                refined_content.strip().startswith(indicator) or 
+                f"\n{indicator}" in refined_content[:500]  # 先頭500文字以内でのエラーメッセージ
+                for indicator in actual_error_indicators
+            )
             
             if is_error_response:
                 print(f"❌ LLMレポート推敲でエラー検出: {refined_content[:200]}...")
@@ -10377,7 +10236,7 @@ try:
     
     if not latest_report:
         print("❌ レポートファイルが見つかりません")
-        print("⚠️ セル47 (最適化結果の保存) を先に実行してください")
+        print("⚠️ セル43 (統合SQL最適化処理) を先に実行してください")
     else:
         print(f"📄 対象レポートファイル: {latest_report}")
         
