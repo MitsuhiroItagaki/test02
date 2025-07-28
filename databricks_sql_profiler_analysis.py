@@ -10389,6 +10389,165 @@ def extract_select_from_ctas(query: str) -> str:
     print("📋 通常のクエリ: そのままEXPLAIN文に使用")
     return query
 
+def generate_improved_query_for_performance_degradation(original_query: str, analysis_result: str, metrics: Dict[str, Any], degradation_analysis: Dict[str, Any], previous_optimized_query: str = "") -> str:
+    """
+    パフォーマンス悪化専用のLLM最適化関数
+    悪化原因分析に基づいて具体的な改善策を適用
+    
+    Args:
+        original_query: 元のクエリ
+        analysis_result: ボトルネック分析結果
+        metrics: メトリクス情報
+        degradation_analysis: 悪化原因分析結果
+        previous_optimized_query: 前回の最適化クエリ
+    """
+    
+    # 悪化分析の詳細情報を抽出
+    primary_cause = degradation_analysis.get('primary_cause', 'unknown')
+    cost_ratio = degradation_analysis.get('analysis_details', {}).get('cost_ratio', 1.0)
+    specific_issues = degradation_analysis.get('specific_issues', [])
+    fix_instructions = degradation_analysis.get('fix_instructions', [])
+    confidence_level = degradation_analysis.get('confidence_level', 'low')
+    
+    # 前回クエリの分析セクション
+    previous_query_section = ""
+    if previous_optimized_query:
+        previous_query_section = f"""
+
+【🚨 前回の最適化クエリ（パフォーマンス悪化）】
+```sql
+{previous_optimized_query}
+```
+
+**❌ 検出された問題点:**
+- 実行コスト比: {cost_ratio:.2f}倍の悪化
+- 主要原因: {primary_cause}
+- 具体的問題: {', '.join(specific_issues)}
+"""
+
+    # パフォーマンス悪化修正に特化したプロンプト
+    performance_improvement_prompt = f"""
+あなたはDatabricksのSQLパフォーマンス最適化の専門家です。
+
+前回の最適化でパフォーマンス悪化が発生しました。悪化原因分析に基づいて **根本的な改善** を行ってください。
+
+【📊 パフォーマンス悪化の詳細分析】
+- **悪化率**: {cost_ratio:.2f}倍（{(cost_ratio-1)*100:.1f}%増加）
+- **主要原因**: {primary_cause}
+- **信頼度**: {confidence_level}
+- **具体的問題**: {', '.join(specific_issues)}
+
+【元の分析対象クエリ】
+```sql
+{original_query}
+```
+{previous_query_section}
+
+【🔧 悪化原因別の具体的修正指示】
+{chr(10).join(f"- {instruction}" for instruction in fix_instructions)}
+
+【🎯 パフォーマンス改善の重要な方針】
+
+1. **🚨 過剰最適化の是正**:
+   - BROADCASTヒントの適用を慎重に見直し
+   - 大きなテーブル（>30MB）へのBROADCAST適用を削除
+   - 効果的でないヒントは積極的に削除
+
+2. **⚡ JOIN効率化**:
+   - JOIN操作数の大幅な増加を避ける
+   - 元のJOIN順序を尊重
+   - 不要なサブクエリ化によるJOIN重複を防ぐ
+
+3. **🎯 データサイズ最適化**:
+   - フィルタープッシュダウンを最大化
+   - 早期の行数削減を重視
+   - 中間結果のサイズを最小化
+
+4. **📊 統計情報に基づく判断**:
+   - 小テーブル（<30MB）のみBROADCAST適用
+   - メモリ効率を重視したJOIN戦略
+   - スピル発生の最小化
+
+【🔄 改善クエリ生成の指針】
+
+**A. 保守的アプローチ（推奨）:**
+- 元クエリの構造を最大限保持
+- 確実に効果的な最適化のみ適用
+- リスクの高い変更は避ける
+
+**B. 段階的改善:**
+- 最も問題となっている箇所のみ修正
+- 一度に多くの変更を加えない
+- 測定可能な改善を重視
+
+**C. フォールバック戦略:**
+- 不確実な最適化は削除
+- 元のクエリに近い形での軽微な改善
+
+【重要な制約】
+- パフォーマンス悪化の主要原因を確実に解決
+- 元クエリより確実に高速なクエリを生成
+- 機能性を一切損なわない
+- 完全で実行可能なSQLのみ出力
+
+【出力形式】
+## 🚀 パフォーマンス改善SQL
+
+**改善した内容**:
+- [具体的な悪化原因の修正]
+- [削除/変更した最適化要素]
+- [新たに適用した改善策]
+
+```sql
+[完全なSQL - パフォーマンス改善済み]
+```
+
+## 改善詳細
+[悪化原因の解決方法と期待される性能改善の説明]
+"""
+
+    # 設定されたLLMプロバイダーを使用
+    provider = LLM_CONFIG["provider"]
+    
+    try:
+        if provider == "databricks":
+            improved_result = _call_databricks_llm(performance_improvement_prompt)
+        elif provider == "openai":
+            improved_result = _call_openai_llm(performance_improvement_prompt)
+        elif provider == "azure_openai":
+            improved_result = _call_azure_openai_llm(performance_improvement_prompt)
+        elif provider == "anthropic":
+            improved_result = _call_anthropic_llm(performance_improvement_prompt)
+        else:
+            error_msg = "⚠️ 設定されたLLMプロバイダーが認識できません"
+            print(f"❌ LLMパフォーマンス改善エラー: {error_msg}")
+            return f"LLM_ERROR: {error_msg}"
+        
+        # LLMレスポンスのエラーチェック
+        if isinstance(improved_result, str):
+            error_indicators = [
+                "APIエラー:",
+                "Input is too long", 
+                "Bad Request",
+                "❌",
+                "⚠️",
+                "タイムアウトエラー:",
+                "API呼び出しエラー:",
+            ]
+            
+            for indicator in error_indicators:
+                if indicator in improved_result:
+                    print(f"❌ LLMパフォーマンス改善でエラー検出: {indicator}")
+                    return f"LLM_ERROR: {improved_result}"
+        
+        return improved_result
+        
+    except Exception as e:
+        error_msg = f"パフォーマンス改善処理でエラー: {str(e)}"
+        print(f"❌ {error_msg}")
+        return f"LLM_ERROR: {error_msg}"
+
+
 def generate_optimized_query_with_error_feedback(original_query: str, analysis_result: str, metrics: Dict[str, Any], error_info: str = "", previous_optimized_query: str = "") -> str:
     """
     エラー情報を含めてLLMによるSQL最適化を実行
@@ -11012,9 +11171,16 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
             optimized_query = generate_optimized_query_with_llm(original_query, analysis_result, metrics)
         else:
             print(f"🔧 修正版最適化クエリ生成（試行{attempt_num}）")
-            # 修正指示付きで再最適化
-            enhanced_analysis = f"{analysis_result}\n\n【前回の悪化分析に基づく修正指示】\n{fix_instructions}"
-            optimized_query = generate_optimized_query_with_error_feedback(original_query, enhanced_analysis, metrics, fix_instructions, optimization_attempts[-1]['optimized_query'] if optimization_attempts else "")
+            # 🚨 修正: パフォーマンス悪化専用関数を使用
+            previous_attempt = optimization_attempts[-1] if optimization_attempts else {}
+            degradation_analysis = previous_attempt.get('degradation_analysis', {})
+            optimized_query = generate_improved_query_for_performance_degradation(
+                original_query, 
+                analysis_result, 
+                metrics, 
+                degradation_analysis, 
+                previous_attempt.get('optimized_query', '')
+            )
         
         # LLMエラーチェック
         if isinstance(optimized_query, str) and optimized_query.startswith("LLM_ERROR:"):
