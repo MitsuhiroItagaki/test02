@@ -8195,6 +8195,120 @@ def summarize_explain_results_with_llm(explain_content: str, explain_cost_conten
         }
 
 
+def generate_optimization_strategy_summary(optimized_result: str, metrics: Dict[str, Any], analysis_result: str = "") -> str:
+    """
+    最適化戦略の要約を生成
+    
+    Args:
+        optimized_result: 最適化結果（LLMレスポンス）
+        metrics: メトリクス情報
+        analysis_result: ボトルネック分析結果
+        
+    Returns:
+        str: 最適化方針の要約
+    """
+    try:
+        # メトリクスからボトルネック指標を取得
+        bottleneck_indicators = metrics.get('bottleneck_indicators', {})
+        overall_metrics = metrics.get('overall_metrics', {})
+        
+        # 最適化で使用された手法を検出
+        optimization_techniques = []
+        performance_issues = []
+        
+        # 最適化内容から手法を抽出
+        if optimized_result:
+            content_upper = optimized_result.upper()
+            
+            # JOIN最適化
+            if 'BROADCAST' in content_upper or 'MAPJOIN' in content_upper:
+                optimization_techniques.append("**Broadcast Join**: 小さなテーブルをブロードキャストして分散結合を最適化")
+            
+            if 'REPARTITION' in content_upper or 'REDISTRIBUTE' in content_upper:
+                optimization_techniques.append("**データ再分散**: パーティション数やキーを調整してデータスキューを解消")
+            
+            # インデックス・パーティション最適化
+            if 'PARTITION' in content_upper and 'BY' in content_upper:
+                optimization_techniques.append("**パーティション最適化**: クエリフィルタに基づくパーティション戦略の改善")
+            
+            if 'CLUSTER' in content_upper or 'LIQUID' in content_upper:
+                optimization_techniques.append("**Liquid Clustering**: 頻繁なアクセスパターンに基づくクラスタリング")
+            
+            # Photon最適化
+            if 'PHOTON' in content_upper or 'VECTORIZED' in content_upper:
+                optimization_techniques.append("**Photon Engine**: ベクトル化実行による高速化")
+            
+            # キャッシュ最適化
+            if 'CACHE' in content_upper or 'PERSIST' in content_upper:
+                optimization_techniques.append("**データキャッシュ**: 中間結果の永続化による再計算回避")
+            
+            # フィルタ最適化
+            if 'WHERE' in content_upper and ('PUSHDOWN' in content_upper or 'PREDICATE' in content_upper):
+                optimization_techniques.append("**述語プッシュダウン**: フィルタ条件の早期適用によるデータ量削減")
+        
+        # ボトルネック分析から問題点を抽出
+        if bottleneck_indicators.get('has_spill', False):
+            performance_issues.append("メモリスピル発生")
+        
+        if bottleneck_indicators.get('has_shuffle_bottleneck', False):
+            performance_issues.append("シャッフル処理ボトルネック")
+        
+        if bottleneck_indicators.get('low_parallelism', False):
+            performance_issues.append("並列度不足")
+        
+        if bottleneck_indicators.get('cache_hit_ratio', 1.0) < 0.5:
+            performance_issues.append("キャッシュヒット率低下")
+        
+        if not overall_metrics.get('photon_enabled', True):
+            performance_issues.append("Photon Engine未活用")
+        
+        # データスキュー検出
+        if bottleneck_indicators.get('has_skew', False):
+            performance_issues.append("データスキュー発生")
+        
+        # 要約生成
+        summary_parts = []
+        
+        # 検出された問題
+        if performance_issues:
+            issues_text = "、".join(performance_issues)
+            summary_parts.append(f"**🔍 検出された主要課題**: {issues_text}")
+        
+        # 適用された最適化手法
+        if optimization_techniques:
+            summary_parts.append("**🛠️ 適用された最適化手法**:")
+            for i, technique in enumerate(optimization_techniques, 1):
+                summary_parts.append(f"   {i}. {technique}")
+        
+        # 最適化方針
+        strategy_focus = []
+        
+        if bottleneck_indicators.get('has_spill', False):
+            strategy_focus.append("メモリ効率化")
+        
+        if bottleneck_indicators.get('has_shuffle_bottleneck', False):
+            strategy_focus.append("ネットワーク負荷軽減")
+        
+        if bottleneck_indicators.get('low_parallelism', False):
+            strategy_focus.append("並列処理能力向上")
+        
+        if strategy_focus:
+            focus_text = "、".join(strategy_focus)
+            summary_parts.append(f"**🎯 最適化重点分野**: {focus_text}")
+        
+        # EXPLAIN統計情報の活用
+        explain_enabled = globals().get('EXPLAIN_ENABLED', 'N')
+        if explain_enabled.upper() == 'Y':
+            summary_parts.append("**📊 統計情報活用**: EXPLAIN + EXPLAIN COST分析により、統計ベースの精密な最適化を実行")
+        
+        if summary_parts:
+            return "\n".join(summary_parts)
+        else:
+            return "**🤖 AI分析による包括的な最適化**: ボトルネック分析、統計情報、ベストプラクティスを総合した最適化を実行"
+    
+    except Exception as e:
+        return f"**🤖 AI最適化**: 包括的な分析に基づく最適化を実行（要約生成エラー: {str(e)}）"
+
 def format_sql_content_for_report(content: str, filename: str = "") -> str:
     """
     SQLファイル内容またはLLMレスポンスをレポート用に適切にフォーマット
@@ -8612,9 +8726,16 @@ Statistical optimization has been executed (details available with DEBUG_ENABLED
         # 🚀 SQLファイル内容の場合は適切にフォーマット（省略機能付き）
         formatted_sql_content = format_sql_content_for_report(optimized_result, latest_sql_filename)
         
+        # 🎯 最適化方針要約を生成
+        optimization_strategy = generate_optimization_strategy_summary(optimized_result, metrics, analysis_result_str)
+        
         report += f"""
 
 ## 🚀 4. SQL最適化分析結果
+
+### 🎯 最適化実行方針
+
+{optimization_strategy}
 
 ### 💡 最適化提案
 
@@ -8805,8 +8926,39 @@ The following topics are analyzed for process evaluation:
         # 🚀 SQLファイル内容の場合は適切にフォーマット（省略機能付き）
         formatted_sql_content = format_sql_content_for_report(optimized_result, latest_sql_filename)
         
+        # 🎯 最適化方針要約を生成（英語版）
+        optimization_strategy = generate_optimization_strategy_summary(optimized_result, metrics, analysis_result_str)
+        
+        # 日本語から英語への翻訳マッピング
+        translation_map = {
+            "🔍 検出された主要課題": "🔍 Key Issues Identified",
+            "🛠️ 適用された最適化手法": "🛠️ Applied Optimization Techniques",
+            "🎯 最適化重点分野": "🎯 Optimization Focus Areas",
+            "📊 統計情報活用": "📊 Statistical Analysis Utilization",
+            "EXPLAIN + EXPLAIN COST分析により、統計ベースの精密な最適化を実行": "Statistical-based precise optimization through EXPLAIN + EXPLAIN COST analysis",
+            "🤖 AI分析による包括的な最適化": "🤖 Comprehensive AI-driven Optimization",
+            "ボトルネック分析、統計情報、ベストプラクティスを総合した最適化を実行": "Comprehensive optimization integrating bottleneck analysis, statistical data, and best practices",
+            "メモリスピル発生": "Memory Spill Occurrence",
+            "シャッフル処理ボトルネック": "Shuffle Processing Bottleneck",
+            "並列度不足": "Insufficient Parallelism",
+            "キャッシュヒット率低下": "Low Cache Hit Rate",
+            "Photon Engine未活用": "Photon Engine Not Utilized",
+            "データスキュー発生": "Data Skew Occurrence",
+            "メモリ効率化": "Memory Efficiency",
+            "ネットワーク負荷軽減": "Network Load Reduction",
+            "並列処理能力向上": "Parallel Processing Enhancement"
+        }
+        
+        optimization_strategy_en = optimization_strategy
+        for jp_text, en_text in translation_map.items():
+            optimization_strategy_en = optimization_strategy_en.replace(jp_text, en_text)
+        
         report += f"""
 ## 🚀 4. SQL Optimization Analysis Results
+
+### 🎯 Optimization Strategy
+
+{optimization_strategy_en}
 
 ### 💡 Optimization Recommendations
 
