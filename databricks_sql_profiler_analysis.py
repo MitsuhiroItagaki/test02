@@ -5941,6 +5941,25 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
                     # Physical Planのサイズ制限（LLMトークン制限対策）
                     MAX_PLAN_SIZE = 30000  # 約30KB制限
                     if len(physical_plan) > MAX_PLAN_SIZE:
+                        # 🚨 DEBUG_ENABLED='Y'の場合、完全なPhysical Planをファイル保存
+                        debug_enabled = globals().get('DEBUG_ENABLED', 'N')
+                        if debug_enabled.upper() == 'Y':
+                            try:
+                                from datetime import datetime
+                                timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                                full_plan_filename = f"output_physical_plan_full_{timestamp}.txt"
+                                
+                                with open(full_plan_filename, 'w', encoding='utf-8') as f:
+                                    f.write(f"# 完全なPhysical Plan情報 (生成日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n")
+                                    f.write(f"# 元サイズ: {len(physical_plan):,} 文字\n")
+                                    f.write(f"# LLM使用サイズ: {MAX_PLAN_SIZE:,} 文字\n\n")
+                                    f.write(physical_plan)
+                                
+                                print(f"📄 完全なPhysical Planを保存: {full_plan_filename}")
+                                
+                            except Exception as save_error:
+                                print(f"⚠️ Physical Plan保存に失敗: {str(save_error)}")
+                        
                         truncated_plan = physical_plan[:MAX_PLAN_SIZE]
                         truncated_plan += f"\n\n⚠️ Physical Planが大きすぎるため、{MAX_PLAN_SIZE}文字に切り詰められました"
                         physical_plan = truncated_plan
@@ -5977,6 +5996,25 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
                 # 統計情報のサイズ制限（LLMトークン制限対策）
                 MAX_STATISTICS_SIZE = 50000  # 約50KB制限
                 if len(cost_statistics) > MAX_STATISTICS_SIZE:
+                    # 🚨 DEBUG_ENABLED='Y'の場合、完全なEXPLAIN COST統計情報をファイル保存
+                    debug_enabled = globals().get('DEBUG_ENABLED', 'N')
+                    if debug_enabled.upper() == 'Y':
+                        try:
+                            from datetime import datetime
+                            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                            full_stats_filename = f"output_explain_cost_statistics_full_{timestamp}.txt"
+                            
+                            with open(full_stats_filename, 'w', encoding='utf-8') as f:
+                                f.write(f"# 完全なEXPLAIN COST統計情報 (生成日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n")
+                                f.write(f"# 元サイズ: {len(cost_statistics):,} 文字\n")
+                                f.write(f"# LLM使用サイズ: {MAX_STATISTICS_SIZE:,} 文字\n\n")
+                                f.write(cost_statistics)
+                            
+                            print(f"📄 完全なEXPLAIN COST統計情報を保存: {full_stats_filename}")
+                            
+                        except Exception as save_error:
+                            print(f"⚠️ EXPLAIN COST統計情報保存に失敗: {str(save_error)}")
+                    
                     truncated_statistics = cost_statistics[:MAX_STATISTICS_SIZE]
                     truncated_statistics += f"\n\n⚠️ 統計情報が大きすぎるため、{MAX_STATISTICS_SIZE}文字に切り詰められました"
                     cost_statistics = truncated_statistics
@@ -10378,18 +10416,25 @@ else:
         old_explain_files = glob.glob("output_explain_plan_*.txt")
         old_error_files = glob.glob("output_explain_error_*.txt")
         
+        # 🚨 新規追加: DEBUG用の完全情報ファイルも削除対象に含める
+        full_plan_files = glob.glob("output_physical_plan_full_*.txt")
+        full_stats_files = glob.glob("output_explain_cost_statistics_full_*.txt")
+        
         all_temp_files = (original_files + optimized_files + cost_original_files + cost_optimized_files + 
-                         error_original_files + error_optimized_files + old_explain_files + old_error_files)
+                         error_original_files + error_optimized_files + old_explain_files + old_error_files +
+                         full_plan_files + full_stats_files)
         
         explain_files = original_files + optimized_files + old_explain_files
         cost_files = cost_original_files + cost_optimized_files
         error_files = error_original_files + error_optimized_files + old_error_files
+        debug_files = full_plan_files + full_stats_files
         
         if all_temp_files:
             print(f"📁 削除対象ファイル:")
             print(f"   📊 EXPLAIN結果: {len(explain_files)} 個")
             print(f"   💰 EXPLAIN COST結果: {len(cost_files)} 個")
             print(f"   ❌ エラーファイル: {len(error_files)} 個")
+            print(f"   🔧 DEBUG完全情報: {len(debug_files)} 個")
             print("💡 注意: DEBUG_ENABLED=N のため、これらのファイルは作成されていないはずです")
             
             # 🔧 変数の初期化をより安全に実行
