@@ -6445,7 +6445,7 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
                     try:
                         from datetime import datetime
                         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-                        extracted_stats_filename = f"output_explain_cost_statistics_extracted_{timestamp}.txt"
+                        extracted_stats_filename = f"output_explain_cost_statistics_extracted_{timestamp}.json"
                         
                         with open(extracted_stats_filename, 'w', encoding='utf-8') as f:
                             f.write(f"# 抽出されたEXPLAIN COST統計情報 (生成日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n")
@@ -10904,7 +10904,7 @@ else:
         # 🚨 新規追加: DEBUG用の完全情報ファイルも削除対象に含める
         full_plan_files = glob.glob("output_physical_plan_full_*.txt")
         full_stats_files = glob.glob("output_explain_cost_statistics_full_*.txt")
-        extracted_stats_files = glob.glob("output_explain_cost_statistics_extracted_*.txt")
+        extracted_stats_files = glob.glob("output_explain_cost_statistics_extracted_*.json")
         structured_plan_files = glob.glob("output_physical_plan_structured_*.json")
         structured_cost_files = glob.glob("output_explain_cost_structured_*.json")
         
