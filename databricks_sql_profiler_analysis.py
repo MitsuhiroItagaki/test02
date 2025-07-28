@@ -5961,6 +5961,13 @@ def extract_structured_physical_plan(physical_plan: str) -> Dict[str, Any]:
         # 抽出サマリー生成
         extracted["extraction_summary"] = f"📊 構造化抽出完了: JOIN({join_count}) SCAN({scan_count}) EXCHANGE({exchange_count}) PHOTON({len(extracted['photon_usage'])})"
         
+        # 🚨 トークン制限対策: 情報量が多い場合の自動要約
+        total_joins_scans = join_count + scan_count
+        if total_joins_scans > 10:  # 閾値: JOIN+SCAN合計が10個以上
+            # 重要度順に並び替えてトップ情報のみ保持
+            extracted = apply_token_limit_optimization(extracted, max_joins=5, max_scans=8)
+            extracted["extraction_summary"] += f" → トークン制限対策でJOIN/SCAN情報を要約済み"
+        
     except Exception as e:
         extracted["extraction_error"] = str(e)
         
@@ -6116,6 +6123,92 @@ def extract_structured_cost_statistics(explain_cost_content: str) -> Dict[str, A
         
     return extracted
 
+def apply_token_limit_optimization(extracted: Dict[str, Any], max_joins: int = 5, max_scans: int = 8) -> Dict[str, Any]:
+    """
+    トークン制限対策: JOIN/SCAN情報の重要度別要約
+    
+    Args:
+        extracted: 抽出された構造化データ
+        max_joins: 保持するJOIN数の上限
+        max_scans: 保持するSCAN数の上限
+    
+    Returns:
+        最適化された構造化データ
+    """
+    
+    # JOIN情報の重要度別ソート
+    joins = extracted.get("joins", [])
+    if len(joins) > max_joins:
+        # 重要度順序: Broadcast > Hash > Sort > Nested
+        join_priority = {
+            "PhotonBroadcastHashJoin": 1,
+            "BroadcastHashJoin": 2,
+            "PhotonHashJoin": 3,
+            "HashJoin": 4,
+            "SortMergeJoin": 5,
+            "NestedLoopJoin": 6
+        }
+        
+        # 重要度でソート
+        sorted_joins = sorted(joins, key=lambda j: join_priority.get(j.get("type", ""), 10))
+        
+        # 上位のみ保持、残りは要約
+        top_joins = sorted_joins[:max_joins]
+        remaining_count = len(joins) - max_joins
+        
+        if remaining_count > 0:
+            summary_join = {
+                "type": "SUMMARY",
+                "condition": f"その他{remaining_count}個のJOIN操作（詳細省略）",
+                "size": "multiple",
+                "rows": "multiple"
+            }
+            top_joins.append(summary_join)
+        
+        extracted["joins"] = top_joins
+    
+    # SCAN情報の重要度別ソート
+    scans = extracted.get("scans", [])
+    if len(scans) > max_scans:
+        # 重要度順序: PhotonScan > FileScan、テーブル名の長さ（詳細度）
+        def scan_priority(scan):
+            priority = 1 if scan.get("type") == "PhotonScan" else 2
+            table_length = len(scan.get("table", ""))
+            return (priority, -table_length)  # テーブル名が長い（詳細）ほど重要
+        
+        # 重要度でソート
+        sorted_scans = sorted(scans, key=scan_priority)
+        
+        # 上位のみ保持、残りは要約
+        top_scans = sorted_scans[:max_scans]
+        remaining_count = len(scans) - max_scans
+        
+        if remaining_count > 0:
+            # 残りのテーブル名を集約
+            remaining_tables = [s.get("table", "unknown")[:20] for s in sorted_scans[max_scans:]]
+            table_summary = ", ".join(remaining_tables[:3])
+            if len(remaining_tables) > 3:
+                table_summary += f" 他{len(remaining_tables)-3}個"
+                
+            summary_scan = {
+                "table": f"SUMMARY({table_summary})",
+                "type": "SUMMARY",
+                "size": "multiple",
+                "rows": "multiple"
+            }
+            top_scans.append(summary_scan)
+        
+        extracted["scans"] = top_scans
+    
+    # 統計情報の更新
+    extracted["statistics"]["optimization_applied"] = True
+    extracted["statistics"]["original_joins"] = len(joins)
+    extracted["statistics"]["original_scans"] = len(scans)
+    extracted["statistics"]["optimized_joins"] = len(extracted["joins"])
+    extracted["statistics"]["optimized_scans"] = len(extracted["scans"])
+    
+    return extracted
+
 def extract_cost_statistics_from_explain_cost(explain_cost_content: str) -> str:
     """
     EXPLAIN COST結果から統計情報を抽出して構造化（改善版 + サイズ制限）
@@ -6250,67 +6343,51 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
                     physical_plan_raw = explain_content[physical_plan_start:physical_plan_end].strip()
                     print(f"📊 Physical Plan情報を抽出: {len(physical_plan_raw)} 文字")
                     
-                    # 🧠 構造化抽出 vs 従来の切り詰めの選択
-                    structured_enabled = globals().get('STRUCTURED_EXTRACTION_ENABLED', 'Y')
-                    debug_enabled = globals().get('DEBUG_ENABLED', 'N')
-                    
-                    if structured_enabled.upper() == 'Y':
-                        # 🚀 構造化抽出アプローチ
-                        try:
-                            structured_plan = extract_structured_physical_plan(physical_plan_raw)
-                            
-                            # 構造化結果をJSON形式で文字列化
-                            import json
-                            physical_plan = json.dumps(structured_plan, ensure_ascii=False, indent=2)
-                            
-                            print(f"🧠 構造化抽出完了: {len(physical_plan_raw):,} → {len(physical_plan):,} 文字 (圧縮率: {len(physical_plan_raw)//len(physical_plan) if len(physical_plan) > 0 else 0}x)")
-                            print(f"   {structured_plan.get('extraction_summary', '📊 構造化抽出完了')}")
-                            
-                            # DEBUG_ENABLED='Y'の場合、構造化結果と元データを保存
-                            if debug_enabled.upper() == 'Y':
-                                try:
-                                    from datetime import datetime
-                                    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-                                    
-                                    # 元のPhysical Plan保存
-                                    full_plan_filename = f"output_physical_plan_full_{timestamp}.txt"
-                                    with open(full_plan_filename, 'w', encoding='utf-8') as f:
-                                        f.write(f"# 完全なPhysical Plan情報 (生成日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n")
-                                        f.write(f"# 元サイズ: {len(physical_plan_raw):,} 文字\n")
-                                        f.write(f"# 構造化後サイズ: {len(physical_plan):,} 文字\n\n")
-                                        f.write(physical_plan_raw)
-                                    
-                                    # 構造化結果保存
-                                    structured_plan_filename = f"output_physical_plan_structured_{timestamp}.json"
-                                    with open(structured_plan_filename, 'w', encoding='utf-8') as f:
-                                        f.write(physical_plan)
-                                    
-                                    print(f"📄 完全なPhysical Planを保存: {full_plan_filename}")
-                                    print(f"📄 構造化Physical Planを保存: {structured_plan_filename}")
-                                    
-                                except Exception as save_error:
-                                    print(f"⚠️ Physical Plan保存に失敗: {str(save_error)}")
-                                    
-                        except Exception as extraction_error:
-                            print(f"⚠️ 構造化抽出に失敗、従来方式にフォールバック: {str(extraction_error)}")
-                            # フォールバック: 従来の切り詰め方式
-                            MAX_PLAN_SIZE = 30000
-                            if len(physical_plan_raw) > MAX_PLAN_SIZE:
-                                physical_plan = physical_plan_raw[:MAX_PLAN_SIZE] + f"\n\n⚠️ 構造化抽出失敗のため{MAX_PLAN_SIZE}文字に切り詰められました"
-                                print(f"⚠️ フォールバック: Physical Planを{MAX_PLAN_SIZE}文字に切り詰めました")
-                            else:
-                                physical_plan = physical_plan_raw
-                    else:
-                        # 🔄 従来の切り詰めアプローチ
-                        physical_plan = physical_plan_raw
-                        MAX_PLAN_SIZE = 30000  # 約30KB制限
-                        if len(physical_plan) > MAX_PLAN_SIZE:
-                            # DEBUG_ENABLED='Y'の場合、完全なPhysical Planをファイル保存
-                            if debug_enabled.upper() == 'Y':
-                                try:
-                                    from datetime import datetime
-                                    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-                                    full_plan_filename = f"output_physical_plan_full_{timestamp}.txt"
+                                    # 🧠 構造化抽出 vs 従来の切り詰めの選択
+                structured_enabled = globals().get('STRUCTURED_EXTRACTION_ENABLED', 'Y')
+                debug_enabled = globals().get('DEBUG_ENABLED', 'N')
+                
+                # 🧠 構造化抽出 vs 従来の切り詰めの選択
+                structured_enabled = globals().get('STRUCTURED_EXTRACTION_ENABLED', 'Y')
+                debug_enabled = globals().get('DEBUG_ENABLED', 'N')
+                
+                if structured_enabled.upper() == 'Y':
+                    # 🚀 構造化抽出アプローチ
+                    try:
+                        structured_plan = extract_structured_physical_plan(physical_plan_raw)
+                        
+                        # 構造化結果をJSON形式で文字列化
+                        import json
+                        physical_plan = json.dumps(structured_plan, ensure_ascii=False, indent=2)
+                        
+                        print(f"🧠 構造化抽出完了: {len(physical_plan_raw):,} → {len(physical_plan):,} 文字")
+                        print(f"   {structured_plan.get('extraction_summary', '📊 構造化抽出完了')}")
+                        
+                        # DEBUG_ENABLED='Y'の場合、構造化結果と元データを保存
+                        if debug_enabled.upper() == 'Y':
+                            try:
+                                from datetime import datetime
+                                timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                                
+                                # 構造化結果保存
+                                structured_plan_filename = f"output_physical_plan_structured_{timestamp}.json"
+                                with open(structured_plan_filename, 'w', encoding='utf-8') as f:
+                                    f.write(physical_plan)
+                                
+                                print(f"📄 構造化Physical Planを保存: {structured_plan_filename}")
+                                
+                            except Exception as save_error:
+                                print(f"⚠️ Physical Plan保存に失敗: {str(save_error)}")
+                                
+                    except Exception as extraction_error:
+                        print(f"⚠️ 構造化抽出に失敗、従来方式にフォールバック: {str(extraction_error)}")
+                        # フォールバック: 従来の切り詰め方式
+                        MAX_PLAN_SIZE = 30000
+                        if len(physical_plan_raw) > MAX_PLAN_SIZE:
+                            physical_plan = physical_plan_raw[:MAX_PLAN_SIZE] + "\n\nStructured extraction failed, truncated to limit"
+                            print(f"⚠️ フォールバック: Physical Planを{MAX_PLAN_SIZE}文字に切り詰めました")
+                        else:
+                            physical_plan = physical_plan_raw
                                     
                                     with open(full_plan_filename, 'w', encoding='utf-8') as f:
                                         f.write(f"# 完全なPhysical Plan情報 (生成日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n")
@@ -6736,6 +6813,12 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
 2. largest_table_nameが1GB以上 → 大テーブルとして最終JOINに配置
 3. broadcast_table_namesから具体的なヒント：`/*+ BROADCAST(item, date_dim) */`
 4. テーブル名を明示したJOIN順序提案を生成
+
+**🚨 トークン制限対策について:**
+- JOIN/SCAN情報が多数の場合、重要度順に要約済み
+- SUMMARY項目は複数操作の集約を示します
+- 詳細は optimization_applied フラグで確認可能
+- Physical Planが100KB超の場合は自動調整済み
 ''' if explain_enabled.upper() == 'Y' and cost_statistics else '(EXPLAIN COST実行が無効、または統計情報が利用できません)'}
 
 【🎯 処理速度重視の最適化要求】
