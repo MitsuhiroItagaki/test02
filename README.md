@@ -548,6 +548,66 @@ except Exception as e:
 - ✅ セル46でファイルが見つからない場合の詳細診断情報
 - ✅ 「てめーいい加減にしろ！」状況の即座解決
 
+#### 🚨 CRITICAL BUG FIX - パフォーマンス評価欠損修正 (v2.7.6)
+
+**ユーザー緊急報告**:
+```
+❌ セル45で最適化クエリでパフォーマンス評価のロジックが完全に抜けてます
+❌ 本当に許せません
+```
+
+**重大バグの根本原因**:
+- v2.7.4でBROADCASTヒント除去時、`broadcast_analysis` 辞書から `already_optimized` キーを除外
+- `generate_optimized_query_with_llm` 関数で `KeyError: 'already_optimized'` 発生
+- LLM最適化プロセスがクラッシュし、緊急フォールバック処理が実行
+- **結果**: パフォーマンス評価が完全にスキップされる致命的な機能欠損
+
+**エラーの詳細**:
+```python
+# 修正前（不完全な辞書）
+broadcast_analysis = {
+    "feasibility": "disabled", 
+    "broadcast_candidates": [], 
+    "reasoning": ["..."], 
+    "is_join_query": True
+    # "already_optimized" キーが欠損！
+}
+
+# アクセス時にKeyError発生
+if broadcast_analysis["already_optimized"]:  # KeyError!
+```
+
+**緊急修正内容**:
+
+**1. 🚨 完全なbroadcast_analysis辞書構築**:
+```python
+broadcast_analysis = {
+    "feasibility": "disabled", 
+    "broadcast_candidates": [], 
+    "recommendations": [],
+    "reasoning": ["BROADCASTヒントは構文エラーの原因となるため無効化"], 
+    "is_join_query": True,
+    "already_optimized": False,  # 🚨 緊急修正: 必須キー追加
+    "spark_threshold_mb": 30.0,
+    "compression_analysis": {},
+    "detailed_size_analysis": [],
+    "execution_plan_analysis": {},
+    "existing_broadcast_nodes": [],
+    "broadcast_applied_tables": []
+}
+```
+
+**2. 🔍 影響範囲と修正効果**:
+- `generate_optimized_query_with_llm` 関数: KeyError解決
+- `execute_iterative_optimization_with_degradation_analysis` 関数: 正常動作復旧
+- パフォーマンス評価ロジック: 完全復旧
+
+**保証事項**:
+- ✅ KeyError 'already_optimized' 完全解決
+- ✅ LLM最適化プロセスの正常動作復旧
+- ✅ パフォーマンス評価ロジックの完全復旧
+- ✅ 「本当に許せません」状況の即座解決
+
 ### 🚨 LLMトークン制限エラーの解決
 
 #### **発生パターン**

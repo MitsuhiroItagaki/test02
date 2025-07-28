@@ -6536,7 +6536,21 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
     
     # BROADCAST適用可能性の分析（プラン情報を含む）
     # 🎯 BROADCAST最適化は無効化（ユーザー要求により除外）
-    broadcast_analysis = {"feasibility": "disabled", "broadcast_candidates": [], "reasoning": ["BROADCASTヒントは構文エラーの原因となるため無効化"], "is_join_query": True}
+    # 🚨 重要: すべての必要なキーを含める（KeyError防止）
+    broadcast_analysis = {
+        "feasibility": "disabled", 
+        "broadcast_candidates": [], 
+        "recommendations": [],
+        "reasoning": ["BROADCASTヒントは構文エラーの原因となるため無効化"], 
+        "is_join_query": True,
+        "already_optimized": False,  # 🚨 緊急修正: 必須キー追加
+        "spark_threshold_mb": 30.0,
+        "compression_analysis": {},
+        "detailed_size_analysis": [],
+        "execution_plan_analysis": {},
+        "existing_broadcast_nodes": [],
+        "broadcast_applied_tables": []
+    }
     
     # プラン情報をメトリクスに追加（ファイル出力で使用）
     if plan_info:
