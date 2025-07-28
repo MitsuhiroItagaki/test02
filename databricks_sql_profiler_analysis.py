@@ -10754,7 +10754,8 @@ def compare_query_performance(original_explain_cost: str, optimized_explain_cost
     comparison_result = {
         'is_optimization_beneficial': True,
         'performance_degradation_detected': False,
-        'significant_improvement_detected': False,  # 🚨 明確な改善検出フラグ追加
+        'significant_improvement_detected': False,  # 🚨 明確な改善検出フラグ追加（1%以上）
+        'substantial_improvement_detected': False,  # 🚀 大幅改善検出フラグ追加（10%以上）
         'total_cost_ratio': 1.0,
         'memory_usage_ratio': 1.0,
         'scan_cost_ratio': 1.0,
@@ -10839,6 +10840,10 @@ def compare_query_performance(original_explain_cost: str, optimized_explain_cost
         COST_IMPROVEMENT_THRESHOLD = 0.99   # 1%以上の削減で最適化クエリ推奨（厳格化）
         MEMORY_IMPROVEMENT_THRESHOLD = 0.99 # 1%以上の削減で最適化クエリ推奨（厳格化）
         
+        # 🚀 大幅改善の判定閾値（ユーザー要求：10%以上改善で試行終了）
+        SUBSTANTIAL_COST_IMPROVEMENT_THRESHOLD = 0.9   # 10%以上のコスト削減で大幅改善認定
+        SUBSTANTIAL_MEMORY_IMPROVEMENT_THRESHOLD = 0.9 # 10%以上のメモリ削減で大幅改善認定
+        
         # パフォーマンス悪化検出（マージンなしで明確な判定）
         degradation_factors = []
         
@@ -10899,6 +10904,12 @@ def compare_query_performance(original_explain_cost: str, optimized_explain_cost
                 comparison_result['memory_usage_ratio'] < MEMORY_IMPROVEMENT_THRESHOLD
             )
             
+            # 🚀 大幅改善検出（10%以上の改善）
+            has_substantial_improvement = (
+                comparison_result['total_cost_ratio'] < SUBSTANTIAL_COST_IMPROVEMENT_THRESHOLD or
+                comparison_result['memory_usage_ratio'] < SUBSTANTIAL_MEMORY_IMPROVEMENT_THRESHOLD
+            )
+            
             # 🚨 厳格判定：1%以上の増加でも元クエリ推奨
             if has_cost_increase or has_memory_increase:
                 performance_factors.insert(0, "❌ パフォーマンス増加を検出（元クエリ推奨）")
@@ -10907,12 +10918,23 @@ def compare_query_performance(original_explain_cost: str, optimized_explain_cost
                 comparison_result['is_optimization_beneficial'] = False  
                 comparison_result['recommendation'] = 'use_original'
                 comparison_result['significant_improvement_detected'] = False
+                comparison_result['substantial_improvement_detected'] = False
+            elif has_substantial_improvement:
+                # 🚀 大幅改善（10%以上）を検出
+                cost_reduction = (1 - comparison_result['total_cost_ratio']) * 100
+                memory_reduction = (1 - comparison_result['memory_usage_ratio']) * 100
+                max_reduction = max(cost_reduction, memory_reduction)
+                performance_factors.insert(0, f"🚀 大幅なパフォーマンス改善を確認（最大{max_reduction:.1f}%削減・最適化クエリ推奨）")
+                comparison_result['significant_improvement_detected'] = True
+                comparison_result['substantial_improvement_detected'] = True
             elif has_significant_improvement:
                 performance_factors.insert(0, "✅ 明確なパフォーマンス改善を確認（最適化クエリ推奨）")
                 comparison_result['significant_improvement_detected'] = True
+                comparison_result['substantial_improvement_detected'] = False
             else:
                 performance_factors.insert(0, "➖ パフォーマンス同等（明確な改善なし）")
                 comparison_result['significant_improvement_detected'] = False
+                comparison_result['substantial_improvement_detected'] = False
             
             comparison_result['details'] = performance_factors
         
@@ -11098,10 +11120,22 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
     from datetime import datetime
     
     print(f"\n🚀 反復的最適化プロセス開始（最大{max_optimization_attempts}回の改善試行）")
+    print("🎯 目標: 10%以上のコスト削減を達成 | 最大試行回数到達時は最良結果を選択")
     print("=" * 70)
     
     optimization_attempts = []
     original_query_for_explain = original_query  # 元クエリの保持
+    
+    # 🚀 ベスト結果追跡（ユーザー要求：最大試行回数到達時は最も良い結果を選択）
+    best_result = {
+        'attempt_num': 0,
+        'query': original_query,
+        'cost_ratio': 1.0,
+        'memory_ratio': 1.0,
+        'performance_comparison': None,
+        'optimized_result': '',
+        'status': 'baseline'
+    }
     
     for attempt_num in range(1, max_optimization_attempts + 1):
         print(f"\n🔄 最適化試行 {attempt_num}/{max_optimization_attempts}")
@@ -11326,37 +11360,45 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                             'memory_ratio': performance_comparison['memory_usage_ratio']
                         })
                         
-                        # 最後の試行でない場合は次の改善を試行
-                        if attempt_num < max_optimization_attempts:
-                            print(f"🔄 試行{attempt_num + 1}で明確な改善を試みます（フォールバック評価）")
-                            continue
-                        else:
-                            print(f"❌ 最大試行回数({max_optimization_attempts})に到達、元クエリを使用")
-                            break
-                    else:
-                        print(f"✅ 試行{attempt_num}: フォールバック評価で明確な改善を確認！")
+                        # 🚀 フォールバック評価でもベスト結果追跡
+                        current_cost_ratio = performance_comparison.get('total_cost_ratio', 1.0)
+                        current_memory_ratio = performance_comparison.get('memory_usage_ratio', 1.0)
+                        
+                        # フォールバック評価では改善の場合のみベスト更新（不確実性を考慮）
+                        if performance_comparison.get('significant_improvement_detected', False):
+                            is_better_than_best = (
+                                current_cost_ratio < best_result['cost_ratio'] or 
+                                (current_cost_ratio == best_result['cost_ratio'] and current_memory_ratio < best_result['memory_ratio'])
+                            )
+                            
+                            if is_better_than_best:
+                                print(f"🏆 試行{attempt_num}: フォールバック評価で新ベスト結果！")
+                                best_result.update({
+                                    'attempt_num': attempt_num,
+                                    'query': current_query,
+                                    'cost_ratio': current_cost_ratio,
+                                    'memory_ratio': current_memory_ratio,
+                                    'performance_comparison': performance_comparison,
+                                    'optimized_result': optimized_query_str,
+                                    'status': 'fallback_improved'
+                                })
+                        
                         optimization_attempts.append({
                             'attempt': attempt_num,
-                            'status': 'fallback_success',
+                            'status': status_reason,
                             'optimized_query': current_query,
                             'performance_comparison': performance_comparison,
-                            'cost_ratio': performance_comparison['total_cost_ratio'],
-                            'memory_ratio': performance_comparison['memory_usage_ratio']
+                            'cost_ratio': current_cost_ratio,
+                            'memory_ratio': current_memory_ratio
                         })
                         
-                        # 🚨 修正: 重複保存を防止（メイン処理で一括保存するため、ここでは保存しない）
-                        # saved_files = save_optimized_sql_files(...)  # ← 重複防止のためコメントアウト
-                        
-                        return {
-                            'final_status': 'optimization_success',
-                            'final_query': current_query,
-                            'successful_attempt': attempt_num,
-                            'total_attempts': attempt_num,
-                            'optimization_attempts': optimization_attempts,
-                            'performance_comparison': performance_comparison,
-                            'optimized_result': optimized_query_str,  # 🔧 メイン処理での保存用に追加
-                            'saved_files': None  # 🔧 メイン処理で保存するためNone
-                        }
+                        # 🚀 フォールバック評価では大幅改善判定が困難なため、試行継続
+                        if attempt_num < max_optimization_attempts:
+                            print(f"🔄 試行{attempt_num + 1}でより確実な改善を目指します（フォールバック評価）")
+                            continue
+                        else:
+                            print(f"⏰ 最大試行回数({max_optimization_attempts})到達 → ベスト結果を選択")
+                            break
                     
                 except Exception as e:
                     print(f"❌ フォールバック評価でもエラー: {str(e)}")
@@ -11397,52 +11439,41 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                 else:
                     print(f"❌ performance_comparison is None!")
                 
-                # 🚨 厳格判定：明確な改善がない場合は再試行
-                if not performance_comparison.get('significant_improvement_detected', False):
-                    
-                    if performance_comparison['performance_degradation_detected']:
-                        print(f"🚨 試行{attempt_num}: パフォーマンス増加を検出")
-                        status_reason = "performance_degraded"
-                    else:
-                        print(f"⚠️ 試行{attempt_num}: 明確な改善が確認できません")
-                        status_reason = "insufficient_improvement"
-                    
-                    # 悪化原因分析
-                    degradation_analysis = analyze_degradation_causes(performance_comparison, original_cost_content, optimized_cost_content)
-                    
-                    print(f"   詳細: {', '.join(performance_comparison.get('details', []))}")
-                    
+                # 🚀 ベスト結果更新判定（ユーザー要求：常に最良結果を追跡）
+                current_cost_ratio = performance_comparison['total_cost_ratio']
+                current_memory_ratio = performance_comparison['memory_usage_ratio']
+                
+                # 現在の結果がベストを上回るかチェック（コスト比率が低いほど良い）
+                is_better_than_best = (
+                    current_cost_ratio < best_result['cost_ratio'] or 
+                    (current_cost_ratio == best_result['cost_ratio'] and current_memory_ratio < best_result['memory_ratio'])
+                )
+                
+                if is_better_than_best:
+                    print(f"🏆 試行{attempt_num}: 新しいベスト結果を記録！")
+                    print(f"   📊 コスト比: {best_result['cost_ratio']:.3f} → {current_cost_ratio:.3f}")
+                    print(f"   💾 メモリ比: {best_result['memory_ratio']:.3f} → {current_memory_ratio:.3f}")
+                    best_result.update({
+                        'attempt_num': attempt_num,
+                        'query': current_query,
+                        'cost_ratio': current_cost_ratio,
+                        'memory_ratio': current_memory_ratio,
+                        'performance_comparison': performance_comparison,
+                        'optimized_result': optimized_query_str,
+                        'status': 'improved'
+                    })
+                
+                # 🚀 大幅改善（10%以上）達成で即座に終了
+                if performance_comparison.get('substantial_improvement_detected', False):
+                    print(f"🚀 試行{attempt_num}: 大幅改善達成（10%以上削減）！即座に最適化完了")
                     optimization_attempts.append({
                         'attempt': attempt_num,
-                        'status': status_reason,
+                        'status': 'substantial_success',
                         'optimized_query': current_query,
                         'performance_comparison': performance_comparison,
-                        'degradation_analysis': degradation_analysis,
-                        'cost_ratio': performance_comparison['total_cost_ratio'],
-                        'memory_ratio': performance_comparison['memory_usage_ratio']
+                        'cost_ratio': current_cost_ratio,
+                        'memory_ratio': current_memory_ratio
                     })
-                    
-                    # 最後の試行でない場合は次の改善を試行
-                    if attempt_num < max_optimization_attempts:
-                        print(f"🔄 試行{attempt_num + 1}で明確な改善を試みます")
-                        continue
-                    else:
-                        print(f"❌ 最大試行回数({max_optimization_attempts})に到達、元クエリを使用")
-                        break
-                        
-                else:
-                    print(f"✅ 試行{attempt_num}: 明確なパフォーマンス改善を確認！")
-                    optimization_attempts.append({
-                        'attempt': attempt_num,
-                        'status': 'success',
-                        'optimized_query': current_query,
-                        'performance_comparison': performance_comparison,
-                        'cost_ratio': performance_comparison['total_cost_ratio'],
-                        'memory_ratio': performance_comparison['memory_usage_ratio']
-                    })
-                    
-                    # 🚨 修正: 重複保存を防止（メイン処理で一括保存するため、ここでは保存しない）
-                    # saved_files = save_optimized_sql_files(...)  # ← 重複防止のためコメントアウト
                     
                     return {
                         'final_status': 'optimization_success',
@@ -11451,9 +11482,46 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                         'total_attempts': attempt_num,
                         'optimization_attempts': optimization_attempts,
                         'performance_comparison': performance_comparison,
-                        'optimized_result': optimized_query_str,  # 🔧 メイン処理での保存用に追加
-                        'saved_files': None  # 🔧 メイン処理で保存するためNone
+                        'optimized_result': optimized_query_str,
+                        'saved_files': None,  # メイン処理で保存
+                        'achievement_type': 'substantial_improvement'
                     }
+                
+                # 🚀 改善はあるが大幅でない場合の判定
+                elif performance_comparison.get('significant_improvement_detected', False):
+                    print(f"✅ 試行{attempt_num}: 改善を確認（目標10%未達）")
+                    status_reason = "partial_improvement"
+                else:
+                    # 改善なしまたは悪化の場合
+                    if performance_comparison['performance_degradation_detected']:
+                        print(f"🚨 試行{attempt_num}: パフォーマンス増加を検出")
+                        status_reason = "performance_degraded"
+                    else:
+                        print(f"⚠️ 試行{attempt_num}: 明確な改善が確認できません")
+                        status_reason = "insufficient_improvement"
+                
+                # 悪化原因分析（改善不足の場合も実行）
+                degradation_analysis = analyze_degradation_causes(performance_comparison, original_cost_content, optimized_cost_content)
+                
+                print(f"   詳細: {', '.join(performance_comparison.get('details', []))}")
+                
+                optimization_attempts.append({
+                    'attempt': attempt_num,
+                    'status': status_reason,
+                    'optimized_query': current_query,
+                    'performance_comparison': performance_comparison,
+                    'degradation_analysis': degradation_analysis,
+                    'cost_ratio': current_cost_ratio,
+                    'memory_ratio': current_memory_ratio
+                })
+                
+                # 🚀 新判定: 大幅改善（10%以上）でない限り試行継続
+                if attempt_num < max_optimization_attempts:
+                    print(f"🔄 試行{attempt_num + 1}で大幅改善（10%以上削減）を目指します")
+                    continue
+                else:
+                    print(f"⏰ 最大試行回数({max_optimization_attempts})到達 → ベスト結果を選択")
+                    break
             
             except Exception as e:
                 print(f"❌ 試行{attempt_num}: パフォーマンス比較でエラー: {str(e)}")
@@ -11515,20 +11583,43 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                 'note': 'Performance comparison unavailable but query is syntactically valid'
             }
     
-    # 全ての最適化試行が失敗または悪化: 元クエリを使用
-    print(f"\n🔄 全{max_optimization_attempts}回の最適化試行が完了、元クエリを使用")
+    # 🚀 最大試行回数到達：ベスト結果を最終クエリとして選択
+    print(f"\n⏰ 全{max_optimization_attempts}回の最適化試行が完了")
+    print("🏆 ベスト結果を最終クエリとして選択します")
+    print("=" * 60)
     
-    # 最良の試行結果があれば詳細をレポートに含める
-    failure_summary = []
-    for attempt in optimization_attempts:
-        if attempt['status'] == 'performance_degraded':
-            failure_summary.append(f"試行{attempt['attempt']}: {attempt['degradation_analysis']['primary_cause']} (コスト比: {attempt['cost_ratio']:.2f})")
-        elif attempt['status'] == 'llm_error':
-            failure_summary.append(f"試行{attempt['attempt']}: LLMエラー")
-        elif attempt['status'] == 'explain_failed':
-            failure_summary.append(f"試行{attempt['attempt']}: EXPLAIN実行失敗")
-    
-    failure_report = f"""# ❌ 反復的最適化が全て失敗のため、元のクエリを使用
+    # ベスト結果の詳細表示
+    if best_result['attempt_num'] > 0:
+        print(f"🥇 選択されたベスト結果: 試行{best_result['attempt_num']}")
+        print(f"   📊 コスト比: {best_result['cost_ratio']:.3f} (改善度: {(1-best_result['cost_ratio'])*100:.1f}%)")
+        print(f"   💾 メモリ比: {best_result['memory_ratio']:.3f} (改善度: {(1-best_result['memory_ratio'])*100:.1f}%)")
+        
+        final_query = best_result['query']
+        final_optimized_result = best_result['optimized_result']
+        final_performance_comparison = best_result['performance_comparison']
+        final_status = 'optimization_success'
+        achievement_type = 'best_of_trials'
+        
+        print(f"✅ ベスト結果を最適化クエリとして採用")
+        
+    else:
+        print(f"⚠️ 全ての試行でエラーまたは評価不可のため、元クエリを使用")
+        
+        # 試行結果サマリー
+        failure_summary = []
+        for attempt in optimization_attempts:
+            if attempt['status'] == 'performance_degraded':
+                failure_summary.append(f"試行{attempt['attempt']}: {attempt.get('degradation_analysis', {}).get('primary_cause', 'unknown')} (コスト比: {attempt.get('cost_ratio', 'N/A')})")
+            elif attempt['status'] == 'llm_error':
+                failure_summary.append(f"試行{attempt['attempt']}: LLMエラー")
+            elif attempt['status'] == 'explain_failed':
+                failure_summary.append(f"試行{attempt['attempt']}: EXPLAIN実行失敗")
+            elif attempt['status'] == 'comparison_error':
+                failure_summary.append(f"試行{attempt['attempt']}: パフォーマンス比較エラー")
+            else:
+                failure_summary.append(f"試行{attempt['attempt']}: {attempt['status']}")
+        
+        failure_report = f"""# ⚠️ 全最適化試行完了のため、元クエリを使用
 
 ## 最適化試行結果
 
@@ -11536,8 +11627,8 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
 
 ## 最終判断
 
-{max_optimization_attempts}回の最適化試行を実行しましたが、いずれも元クエリより性能が悪化するか、エラーが発生したため、
-安全性を優先して元のクエリを使用します。
+{max_optimization_attempts}回の最適化試行を実行しましたが、10%以上の大幅改善には到達せず、
+ベスト結果も元クエリを上回りませんでした。
 
 ## 元のクエリ
 
@@ -11551,23 +11642,24 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
 - より詳細なEXPLAIN情報を取得して手動最適化を検討してください  
 - Liquid Clusteringやテーブル統計の更新を検討してください
 """
-    
-    saved_files = save_optimized_sql_files(
-        original_query_for_explain,
-        failure_report,
-        metrics,
-        analysis_result,
-        "",  # llm_response
-        None  # performance_comparison
-    )
+        
+        final_query = original_query
+        final_optimized_result = failure_report
+        final_performance_comparison = None
+        final_status = 'optimization_failed'
+        achievement_type = 'no_improvement'
     
     return {
-        'final_status': 'optimization_failed',
-        'final_query': original_query,
+        'final_status': final_status,
+        'final_query': final_query,
         'total_attempts': len(optimization_attempts),
         'optimization_attempts': optimization_attempts,
-        'saved_files': saved_files,
-        'fallback_reason': 'All optimization attempts resulted in performance degradation or errors'
+        'performance_comparison': final_performance_comparison,
+        'optimized_result': final_optimized_result,
+        'saved_files': None,  # メイン処理で保存
+        'best_result': best_result,
+        'achievement_type': achievement_type,
+        'fallback_reason': f'Best result from {max_optimization_attempts} attempts selected' if best_result['attempt_num'] > 0 else 'All attempts failed or degraded'
     }
 
 

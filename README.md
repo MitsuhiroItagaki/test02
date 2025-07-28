@@ -812,6 +812,80 @@ return {
 - ✅ 処理効率の向上
 - ✅ ログ出力のクリーン化
 
+#### 🚀 ENHANCED OPTIMIZATION CRITERIA (v2.7.11)
+
+**ユーザー要求**:
+```
+最適化クエリによる実行コストの削減が0.9以下にならない場合は最大試行回数まで試行し、
+最大試行回数まで達した場合は最も良い結果を出したクエリを最終的な最適化クエリとしてください。
+```
+
+**新しい最適化戦略**:
+
+**1. 🎯 10%以上改善の目標設定**:
+```python
+# 🚀 大幅改善の判定閾値（ユーザー要求：10%以上改善で試行終了）
+SUBSTANTIAL_COST_IMPROVEMENT_THRESHOLD = 0.9   # 10%以上のコスト削減で大幅改善認定
+SUBSTANTIAL_MEMORY_IMPROVEMENT_THRESHOLD = 0.9 # 10%以上のメモリ削減で大幅改善認定
+```
+
+**2. 🏆 ベスト結果追跡システム**:
+```python
+# ベスト結果追跡（最大試行回数到達時は最も良い結果を選択）
+best_result = {
+    'attempt_num': 0,
+    'query': original_query,
+    'cost_ratio': 1.0,
+    'memory_ratio': 1.0,
+    'performance_comparison': None,
+    'optimized_result': '',
+    'status': 'baseline'
+}
+```
+
+**3. 🚀 新しい試行継続ロジック**:
+
+**従来**: 1%改善で早期終了
+```python
+# ❌ 旧動作：1%改善で成功終了
+if significant_improvement_detected:  # ≧1%改善
+    return success  # 早期終了
+```
+
+**新動作**: 10%改善まで試行継続 + ベスト結果選択
+```python
+# ✅ 新動作：10%改善まで試行継続
+if substantial_improvement_detected:  # ≧10%改善
+    return success  # 即座に終了（大幅改善達成）
+else:
+    continue_until_max_attempts()  # 10%未達なら試行継続
+    return best_of_all_attempts()  # 最大試行回数到達時はベスト選択
+```
+
+**4. 💯 最大試行回数到達時の動作**:
+```python
+🥇 選択されたベスト結果: 試行2
+   📊 コスト比: 0.920 (改善度: 8.0%)
+   💾 メモリ比: 0.950 (改善度: 5.0%)
+✅ ベスト結果を最適化クエリとして採用
+```
+
+**5. 🔍 新しい改善判定フラグ**:
+```python
+comparison_result = {
+    'significant_improvement_detected': False,  # 1%以上改善
+    'substantial_improvement_detected': False,  # 10%以上改善（新追加）
+    # ...
+}
+```
+
+**実装効果**:
+- ✅ 10%以上の大幅改善を目標とした最適化継続
+- ✅ 最大試行回数到達時のベスト結果自動選択
+- ✅ より積極的な最適化による性能向上の最大化
+- ✅ 無駄な早期終了の防止（1%改善での妥協なし）
+- ✅ 全試行結果の有効活用
+
 ### 🚨 LLMトークン制限エラーの解決
 
 #### **発生パターン**
