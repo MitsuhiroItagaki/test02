@@ -1,0 +1,446 @@
+{
+  "joins": [
+    {
+      "type": "PhotonBroadcastHashJoin",
+      "condition": "i_brand_id#71406, i_class_id#71408, i_category_id#71410 = i_brand_id#71507, i_class_id#71509, i_cate",
+      "size": "photon_optimized",
+      "rows": "photon_optimized"
+    },
+    {
+      "type": "PhotonBroadcastHashJoin",
+      "condition": "ss_sold_date_sk#71201 = d_date_sk#71224 (Inner, BuildRight)",
+      "size": "photon_optimized",
+      "rows": "photon_optimized"
+    },
+    {
+      "type": "PhotonBroadcastHashJoin",
+      "condition": "cs_sold_date_sk#71252 = d_date_sk#71286 (Inner, BuildRight)",
+      "size": "photon_optimized",
+      "rows": "photon_optimized"
+    },
+    {
+      "type": "PhotonBroadcastHashJoin",
+      "condition": "ws_sold_date_sk#71314 = d_date_sk#71348 (Inner, BuildRight)",
+      "size": "photon_optimized",
+      "rows": "photon_optimized"
+    },
+    {
+      "type": "PhotonBroadcastHashJoin",
+      "condition": "ss_item_sk#71378 = i_item_sk#71399 (Inner, BuildRight)",
+      "size": "photon_optimized",
+      "rows": "photon_optimized"
+    },
+    {
+      "type": "SUMMARY",
+      "condition": "その他26個のJOIN操作（詳細省略）",
+      "size": "multiple",
+      "rows": "multiple"
+    }
+  ],
+  "scans": [
+    {
+      "table": "tpcds.tpcds_sf1000_delta_lc.catalog_sales",
+      "columns": "cs_sold_date_sk#71252,cs_quantity#71270,cs_list_price#71272",
+      "type": "PhotonScan",
+      "size": "photon_scan",
+      "rows": "photon_scan"
+    },
+    {
+      "table": "tpcds.tpcds_sf1000_delta_lc.catalog_sales",
+      "columns": "cs_sold_date_sk#71033,cs_item_sk#71048",
+      "type": "PhotonScan",
+      "size": "photon_scan",
+      "rows": "photon_scan"
+    },
+    {
+      "table": "tpcds.tpcds_sf1000_delta_lc.catalog_sales",
+      "columns": "cs_sold_date_sk#72366,cs_quantity#72384,cs_list_price#72386",
+      "type": "PhotonScan",
+      "size": "photon_scan",
+      "rows": "photon_scan"
+    },
+    {
+      "table": "tpcds.tpcds_sf1000_delta_lc.catalog_sales",
+      "columns": "cs_sold_date_sk#72146,cs_item_sk#72161",
+      "type": "PhotonScan",
+      "size": "photon_scan",
+      "rows": "photon_scan"
+    },
+    {
+      "table": "tpcds.tpcds_sf1000_delta_lc.store_sales",
+      "columns": "ss_sold_date_sk#71201,ss_quantity#71211,ss_list_price#71213",
+      "type": "PhotonScan",
+      "size": "photon_scan",
+      "rows": "photon_scan"
+    },
+    {
+      "table": "tpcds.tpcds_sf1000_delta_lc.store_sales",
+      "columns": "ss_sold_date_sk#71376,ss_item_sk#71378,ss_quantity#71386,ss_list_price#71388",
+      "type": "PhotonScan",
+      "size": "photon_scan",
+      "rows": "photon_scan"
+    },
+    {
+      "table": "tpcds.tpcds_sf1000_delta_lc.store_sales",
+      "columns": "ss_sold_date_sk#70932,ss_item_sk#70934",
+      "type": "PhotonScan",
+      "size": "photon_scan",
+      "rows": "photon_scan"
+    },
+    {
+      "table": "tpcds.tpcds_sf1000_delta_lc.store_sales",
+      "columns": "ss_sold_date_sk#72315,ss_quantity#72325,ss_list_price#72327",
+      "type": "PhotonScan",
+      "size": "photon_scan",
+      "rows": "photon_scan"
+    },
+    {
+      "table": "SUMMARY(tpcds.tpcds_sf1000_d, tpcds.tpcds_sf1000_d, tpcds.tpcds_sf1000_d 他31個)",
+      "type": "SUMMARY",
+      "size": "multiple",
+      "rows": "multiple"
+    }
+  ],
+  "exchanges": [
+    {
+      "type": "SHUFFLE",
+      "detail": "+- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": "+- PhotonShuffleExchangeSink SinglePartition"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": "+- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": "+- PhotonShuffleExchangeSink SinglePartition"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":     +- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":           +- PhotonShuffleExchangeSink SinglePartition"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":     +- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":           +- PhotonShuffleExchangeSink SinglePartition"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": "+- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": "+- PhotonShuffleExchangeSink SinglePartition"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":     +- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":           +- PhotonShuffleExchangeSink hashpartitioning(i_brand_id#71406, i_class_id#71408, i_cate"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :  :     +- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :  :           +- PhotonShuffleExchangeSink SinglePartition"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :  +- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :        +- PhotonShuffleExchangeSink SinglePartition"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :                 +- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :                       +- PhotonShuffleExchangeSink SinglePartition"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :                             +- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :                                   +- PhotonShuffleExchangeSink hashpartiti"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :                                            :     :- PhotonShuffleExchangeS"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :                                            :     :     +- PhotonShuffleExc"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :                                            :     :                 :     +"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :                                            :     :                 :      "
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :                                            :     :                 +- Phot"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :                                            :     :                       +"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :                                            :     +- PhotonShuffleExchangeS"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :                                            :           +- PhotonShuffleExc"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :                                            :                       :     +"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :                                            :                       :      "
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :                                            :                       +- Phot"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :                                            :                             +"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :                                            +- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :                                                  +- PhotonShuffleExchangeS"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :                                                              :     +- Phot"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :                                                              :           +"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :                                                              +- PhotonShuf"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       :                                                                    +- Phot"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       +- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                             +- PhotonShuffleExchangeSink SinglePartition"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": "+- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": "+- PhotonShuffleExchangeSink SinglePartition"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": "+- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": "+- PhotonShuffleExchangeSink SinglePartition"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":     +- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":           +- PhotonShuffleExchangeSink SinglePartition"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":     +- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":           +- PhotonShuffleExchangeSink SinglePartition"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": "+- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": "+- PhotonShuffleExchangeSink SinglePartition"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": "+- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": "+- PhotonShuffleExchangeSink hashpartitioning(i_brand_id#71507, i_class_id#71509, i_category_id#7151"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":  :     +- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":  :           +- PhotonShuffleExchangeSink SinglePartition"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":  +- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":        +- PhotonShuffleExchangeSink SinglePartition"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                 +- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                       +- PhotonShuffleExchangeSink SinglePartition"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                             +- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                                   +- PhotonShuffleExchangeSink hashpartitioning(brand_id#70770, cl"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                                            :     :- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                                            :     :     +- PhotonShuffleExchangeSink hashpartitioni"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                                            :     :                 :     +- PhotonShuffleExchangeS"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                                            :     :                 :           +- PhotonShuffleExc"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                                            :     :                 +- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                                            :     :                       +- PhotonShuffleExchangeS"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                                            :     +- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                                            :           +- PhotonShuffleExchangeSink hashpartitioni"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                                            :                       :     +- PhotonShuffleExchangeS"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                                            :                       :           +- PhotonShuffleExc"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                                            :                       +- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                                            :                             +- PhotonShuffleExchangeS"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                                            +- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                                                  +- PhotonShuffleExchangeSink hashpartitioning(coa"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                                                              :     +- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                                                              :           +- PhotonShuffleExchangeS"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                                                              +- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": ":                                                                    +- PhotonShuffleExchangeSink Si"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": "+- PhotonShuffleExchangeSource"
+    },
+    {
+      "type": "SHUFFLE",
+      "detail": "+- PhotonShuffleExchangeSink SinglePartition"
+    }
+  ],
+  "aggregates": [],
+  "filters": [],
+  "photon_usage": {
+    "result_stage": true,
+    "project": true
+  },
+  "bottlenecks": [],
+  "statistics": {
+    "total_joins": 31,
+    "total_scans": 42,
+    "total_exchanges": 80,
+    "photon_operations": 2,
+    "optimization_applied": true,
+    "original_joins": 31,
+    "original_scans": 42,
+    "optimized_joins": 6,
+    "optimized_scans": 9
+  },
+  "total_size": 69655,
+  "extraction_summary": "📊 構造化抽出完了: JOIN(31) SCAN(42) EXCHANGE(80) PHOTON(2) → トークン制限対策でJOIN/SCAN情報を要約済み"
+}

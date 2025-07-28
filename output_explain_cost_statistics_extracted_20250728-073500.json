@@ -1,0 +1,159 @@
+# 抽出されたEXPLAIN COST統計情報 (生成日時: 2025-07-28 07:35:00)
+# 抽出サイズ: 3,631 文字
+# 元ファイル: output_explain_cost_original_20250728-073455.txt
+
+{
+  "table_stats": {
+    "GlobalLimit": {
+      "size_bytes": 11366.4,
+      "size_str": "11.1KiB",
+      "rows": 100,
+      "is_broadcast_candidate": true
+    },
+    "LocalLimit": {
+      "size_bytes": 15623782.4,
+      "size_str": "14.9MiB",
+      "rows": 1,
+      "is_broadcast_candidate": true
+    },
+    "Project": {
+      "size_bytes": 7130316.8,
+      "size_str": "6.8MiB",
+      "rows": 2,
+      "is_broadcast_candidate": true
+    },
+    "Sort": {
+      "size_bytes": 12582912.0,
+      "size_str": "12.0MiB",
+      "rows": 1,
+      "is_broadcast_candidate": true
+    },
+    "i_brand_id_table": {
+      "size_bytes": 7130316.8,
+      "size_str": "6.8MiB",
+      "rows": 2,
+      "is_broadcast_candidate": true
+    },
+    "Filter": {
+      "size_bytes": 127192268.8,
+      "size_str": "121.3MiB",
+      "rows": 2,
+      "is_broadcast_candidate": false
+    },
+    "Aggregate": {
+      "size_bytes": 2726297.6,
+      "size_str": "2.6MiB",
+      "rows": 1,
+      "is_broadcast_candidate": true
+    },
+    "Union": {
+      "size_bytes": 82785494630.4,
+      "size_str": "77.1GiB",
+      "rows": 4,
+      "is_broadcast_candidate": false
+    },
+    "ss_sold_date_sk_table": {
+      "size_bytes": 37795712204.8,
+      "size_str": "35.2GiB",
+      "rows": 2,
+      "is_broadcast_candidate": false
+    },
+    "tpcds.tpcds_sf1000_delta_lc": {
+      "size_bytes": 127821414.4,
+      "size_str": "121.9MiB",
+      "rows": 3,
+      "is_broadcast_candidate": false
+    },
+    "cs_sold_date_sk_table": {
+      "size_bytes": 19005230284.8,
+      "size_str": "17.7GiB",
+      "rows": 1,
+      "is_broadcast_candidate": false
+    },
+    "ws_sold_date_sk_table": {
+      "size_bytes": 9448928051.2,
+      "size_str": "8.8GiB",
+      "rows": 5,
+      "is_broadcast_candidate": false
+    },
+    "ss_item_sk_table": {
+      "size_bytes": 66142496358.4,
+      "size_str": "61.6GiB",
+      "rows": 2,
+      "is_broadcast_candidate": false
+    },
+    "brand_id_table": {
+      "size_bytes": 47244640256.0,
+      "size_str": "44.0GiB",
+      "rows": 2,
+      "is_broadcast_candidate": false
+    },
+    "AggregatePart": {
+      "size_bytes": 23729694310.4,
+      "size_str": "22.1GiB",
+      "rows": 1,
+      "is_broadcast_candidate": false
+    },
+    "ws_item_sk_table": {
+      "size_bytes": 16535624089.6,
+      "size_str": "15.4GiB",
+      "rows": 5,
+      "is_broadcast_candidate": false
+    },
+    "cs_item_sk_table": {
+      "size_bytes": 33178622361.6,
+      "size_str": "30.9GiB",
+      "rows": 1,
+      "is_broadcast_candidate": false
+    }
+  },
+  "join_costs": {},
+  "selectivity": {},
+  "partition_info": {},
+  "memory_estimates": {},
+  "cost_breakdown": {},
+  "critical_stats": {
+    "largest_table": {
+      "name": "tpcds.tpcds_sf1000_delta_lc",
+      "size": 437764541644.8,
+      "size_str": "407.7GiB"
+    },
+    "total_rows": 759,
+    "broadcast_candidates": [
+      {
+        "table": "GlobalLimit",
+        "size": "11.1KiB"
+      },
+      {
+        "table": "LocalLimit",
+        "size": "14.9MiB"
+      },
+      {
+        "table": "Project",
+        "size": "14.9MiB"
+      },
+      {
+        "table": "Sort",
+        "size": "12.0MiB"
+      },
+      {
+        "table": "Project",
+        "size": "12.0MiB"
+      }
+    ],
+    "tables_analyzed": 198,
+    "cost_operations": 0,
+    "memory_estimates": 0,
+    "table_breakdown": {
+      "total_tables": 17,
+      "largest_table_name": "tpcds.tpcds_sf1000_delta_lc",
+      "broadcast_table_names": [
+        "GlobalLimit",
+        "LocalLimit",
+        "Project"
+      ]
+    }
+  },
+  "total_size": 487354,
+  "extraction_summary": "💰 統計抽出完了: テーブル(198) コスト(0) メモリ(0) BROADCAST候補(76)"
+}
