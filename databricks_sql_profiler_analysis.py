@@ -5844,43 +5844,90 @@ def extract_structured_physical_plan(physical_plan: str) -> Dict[str, Any]:
             if not line:
                 continue
                 
-            # JOIN情報の抽出
+            # JOIN情報の抽出（従来形式 + Photon形式完全対応）
+            # 従来のSpark JOIN形式（Statistics付き）
             join_match = re.search(r'(\w*Join)\s+([^,\n]+).*?Statistics\(([^)]+)\)', line)
-            if join_match:
-                join_type = join_match.group(1)
-                condition = join_match.group(2).strip()
-                stats = join_match.group(3)
-                
-                # 統計情報から数値抽出
-                size_match = re.search(r'sizeInBytes=([0-9.]+)\s*([KMGT]i?B)?', stats)
-                rows_match = re.search(r'rowCount=(\d+)', stats)
+            # Photon JOIN形式（Statistics無し、詳細なパラメータ付き）
+            photon_join_match = re.search(r'(Photon\w*Join)\s+\[([^\]]+)\],\s*\[([^\]]+)\],\s*(\w+),\s*(\w+)', line)
+            
+            if join_match or photon_join_match:
+                if join_match:
+                    # 従来のSpark JOIN形式
+                    join_type = join_match.group(1)
+                    condition = join_match.group(2).strip()
+                    stats = join_match.group(3)
+                    
+                    # 統計情報から数値抽出
+                    size_match = re.search(r'sizeInBytes=([0-9.]+)\s*([KMGT]i?B)?', stats)
+                    rows_match = re.search(r'rowCount=(\d+)', stats)
+                    
+                    size_str = f"{size_match.group(1)}{size_match.group(2) or 'B'}" if size_match else "unknown"
+                    rows_str = rows_match.group(1) if rows_match else "unknown"
+                    
+                elif photon_join_match:
+                    # Photon JOIN形式の詳細抽出
+                    join_type = photon_join_match.group(1)  # PhotonBroadcastHashJoin等
+                    left_keys = photon_join_match.group(2)   # 左側のJOINキー
+                    right_keys = photon_join_match.group(3)  # 右側のJOINキー
+                    join_method = photon_join_match.group(4) # Inner, Left等
+                    build_side = photon_join_match.group(5)  # BuildRight, BuildLeft等
+                    
+                    # JOIN条件の構成
+                    condition = f"{left_keys} = {right_keys} ({join_method}, {build_side})"
+                    
+                    # Photon JOINは統計情報が別の場所にあるため、ここでは基本情報のみ
+                    size_str = "photon_optimized"
+                    rows_str = "photon_optimized"
                 
                 extracted["joins"].append({
                     "type": join_type,
                     "condition": condition[:100],  # 条件を100文字に制限
-                    "size": f"{size_match.group(1)}{size_match.group(2) or 'B'}" if size_match else "unknown",
-                    "rows": rows_match.group(1) if rows_match else "unknown"
+                    "size": size_str,
+                    "rows": rows_str
                 })
                 join_count += 1
                 
-            # テーブルスキャン情報の抽出
-            elif 'FileScan' in line and 'Statistics(' in line:
+            # テーブルスキャン情報の抽出（従来形式 + Photon形式完全対応）
+            elif ('FileScan' in line and 'Statistics(' in line) or ('PhotonScan' in line and 'parquet' in line):
+                # 従来形式：Statistics付きFileScan
                 stats_match = re.search(r'Statistics\(([^)]+)\)', line)
-                table_match = re.search(r'FileScan\s+([^,\s]+)', line)
+                # Photon形式：PhotonScan parquet table_name[columns]
+                photon_scan_match = re.search(r'PhotonScan\s+parquet\s+([a-zA-Z_][a-zA-Z0-9_.]*)\[([^\]]+)\]', line)
+                # 従来形式：FileScan
+                file_scan_match = re.search(r'FileScan\s+([^,\s\[]+)', line)
                 
-                if stats_match and table_match:
-                    stats = stats_match.group(1)
-                    table = table_match.group(1)
-                    
-                    size_match = re.search(r'sizeInBytes=([0-9.]+)\s*([KMGT]i?B)?', stats)
-                    rows_match = re.search(r'rowCount=(\d+)', stats)
-                    
-                    extracted["scans"].append({
-                        "table": table[:50],  # テーブル名を50文字に制限
-                        "size": f"{size_match.group(1)}{size_match.group(2) or 'B'}" if size_match else "unknown",
-                        "rows": rows_match.group(1) if rows_match else "unknown"
-                    })
-                    scan_count += 1
+                if (stats_match and file_scan_match) or photon_scan_match:
+                    if photon_scan_match:
+                        # Photon形式の場合
+                        table = photon_scan_match.group(1)  # テーブル名
+                        columns = photon_scan_match.group(2)  # 列リスト
+                        stats = None  # PhotonScanには統計情報が同一行にない
+                        
+                        # テーブル統計の保存（Photon用の構造）
+                        extracted["scans"].append({
+                            "table": table[:50],
+                            "columns": columns[:100],
+                            "type": "PhotonScan",
+                            "size": "photon_scan",
+                            "rows": "photon_scan"
+                        })
+                        scan_count += 1
+                        
+                    elif stats_match and file_scan_match:
+                        # 従来形式の場合
+                        stats = stats_match.group(1)
+                        table = file_scan_match.group(1)
+                        
+                        size_match = re.search(r'sizeInBytes=([0-9.]+)\s*([KMGT]i?B)?', stats)
+                        rows_match = re.search(r'rowCount=(\d+)', stats)
+                        
+                        extracted["scans"].append({
+                            "table": table[:50],  # テーブル名を50文字に制限
+                            "type": "FileScan",
+                            "size": f"{size_match.group(1)}{size_match.group(2) or 'B'}" if size_match else "unknown",
+                            "rows": rows_match.group(1) if rows_match else "unknown"
+                        })
+                        scan_count += 1
                     
             # データ移動（Exchange）の抽出
             elif 'Exchange' in line:
