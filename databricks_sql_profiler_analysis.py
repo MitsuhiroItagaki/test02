@@ -8003,8 +8003,8 @@ def generate_execution_plan_markdown_report_en(plan_info: Dict[str, Any]) -> str
     
     if plan_summary.get('shuffle_nodes_count', 0) > 3:
         lines.append("⚠️ **Multiple shuffle operations detected**")
-        lines.append("- Review data distribution and partitioning strategy")
-        lines.append("- Consider applying Liquid Clustering")
+        lines.append("- Review data distribution and Liquid Clustering strategy")
+        lines.append("- Consider applying Liquid Clustering for data layout optimization")
     lines.append("")
     
     # Size estimation based optimization suggestions (disabled - estimatedSizeInBytes not available)
@@ -8231,9 +8231,9 @@ def generate_optimization_strategy_summary(optimized_result: str, metrics: Dict[
             if 'REPARTITION' in content_upper or 'REDISTRIBUTE' in content_upper:
                 optimization_techniques.append("**データ再分散**: パーティション数やキーを調整してデータスキューを解消")
             
-            # インデックス・パーティション最適化
+            # Databricks固有のデータ最適化
             if 'PARTITION' in content_upper and 'BY' in content_upper:
-                optimization_techniques.append("**パーティション最適化**: クエリフィルタに基づくパーティション戦略の改善")
+                optimization_techniques.append("**Liquid Clustering**: クエリフィルタに基づくデータクラスタリング最適化")
             
             if 'CLUSTER' in content_upper or 'LIQUID' in content_upper:
                 optimization_techniques.append("**Liquid Clustering**: 頻繁なアクセスパターンに基づくクラスタリング")
@@ -8940,7 +8940,7 @@ Statistical optimization has been executed (details available with DEBUG_ENABLED
 #### 🔧 実装優先度
 
 1. **高優先度**: Photon有効化、メモリスピル解消
-2. **中優先度**: インデックス最適化、パーティション戦略
+2. **中優先度**: Liquid Clustering、データレイアウト最適化
 3. **低優先度**: 統計情報更新、キャッシュ戦略
 
 {explain_section}
@@ -9167,7 +9167,7 @@ The following topics are analyzed for process evaluation:
 #### 🔧 Implementation Priority
 
 1. **High Priority**: Photon enablement, Memory spill resolution
-2. **Medium Priority**: Index optimization, Partitioning strategy
+2. **Medium Priority**: Liquid Clustering, Data layout optimization
 3. **Low Priority**: Statistics update, Cache strategy
 
 {explain_section}
