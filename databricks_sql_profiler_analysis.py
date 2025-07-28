@@ -6388,21 +6388,6 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
                             print(f"⚠️ フォールバック: Physical Planを{MAX_PLAN_SIZE}文字に切り詰めました")
                         else:
                             physical_plan = physical_plan_raw
-                                    
-                                    with open(full_plan_filename, 'w', encoding='utf-8') as f:
-                                        f.write(f"# 完全なPhysical Plan情報 (生成日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n")
-                                        f.write(f"# 元サイズ: {len(physical_plan):,} 文字\n")
-                                        f.write(f"# LLM使用サイズ: {MAX_PLAN_SIZE:,} 文字\n\n")
-                                        f.write(physical_plan)
-                                    
-                                    print(f"📄 完全なPhysical Planを保存: {full_plan_filename}")
-                                    
-                                except Exception as save_error:
-                                    print(f"⚠️ Physical Plan保存に失敗: {str(save_error)}")
-                            
-                            truncated_plan = physical_plan[:MAX_PLAN_SIZE]
-                            truncated_plan += f"\n\n⚠️ Physical Planが大きすぎるため、{MAX_PLAN_SIZE}文字に切り詰められました"
-                            physical_plan = truncated_plan
                             print(f"⚠️ Physical Planをトークン制限のため{MAX_PLAN_SIZE}文字に切り詰めました")
                 
                 # Photon Explanationの抽出
