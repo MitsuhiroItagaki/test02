@@ -9570,6 +9570,104 @@ def enhance_error_correction_with_syntax_validation(corrected_query: str, origin
 {original_query}"""
 
 
+def fix_common_ambiguous_references(sql_query: str) -> str:
+    """
+    一般的なAMBIGUOUS_REFERENCEエラーパターンを事前修正
+    
+    対応パターン：
+    - ss_item_sk の曖昧性: store_sales vs cross_items
+    - 共通カラム名の修正: テーブルエイリアス明示
+    - CTE内の参照曖昧性解決
+    """
+    import re
+    
+    try:
+        print("🔍 AMBIGUOUS_REFERENCE一般的パターンの検出中...")
+        
+        # 修正フラグ
+        modifications = []
+        fixed_query = sql_query
+        
+        # パターン1: ss_item_sk の曖昧性修正
+        # cross_items との結合コンテキストでの ss_item_sk
+        cross_items_context_pattern = r'(\bFROM\s+[^W]*\bcross_items\b[^W]*?)\bss_item_sk\b'
+        if re.search(cross_items_context_pattern, fixed_query, re.IGNORECASE | re.DOTALL):
+            # cross_items コンテキストでは ci.ss_item_sk を使用
+            fixed_query = re.sub(
+                r'(\bJOIN\s+cross_items\s+\w+\s+ON\s+[^.]*?)ss_item_sk',
+                r'\1ci.ss_item_sk',
+                fixed_query,
+                flags=re.IGNORECASE
+            )
+            modifications.append("cross_items.ss_item_sk → ci.ss_item_sk")
+        
+        # パターン2: store_sales の ss_item_sk を明示化
+        # store_sales テーブルのエイリアス（ss）を明示
+        store_sales_pattern = r'(\bFROM\s+store_sales\s+(\w+)[^W]*?)\bss_item_sk\b'
+        store_sales_matches = re.finditer(store_sales_pattern, fixed_query, re.IGNORECASE | re.DOTALL)
+        for match in store_sales_matches:
+            alias = match.group(2)
+            if alias and alias.lower() != 'ss':
+                # エイリアスがssでない場合は修正
+                fixed_query = re.sub(
+                    r'\bss_item_sk\b',
+                    f'{alias}.ss_item_sk',
+                    fixed_query
+                )
+                modifications.append(f"ss_item_sk → {alias}.ss_item_sk")
+        
+        # パターン3: 明示的なエイリアス付けが不十分な場合の修正
+        # SELECT文内での未修飾カラム参照を検出
+        unqualified_patterns = [
+            (r'\bss_item_sk\b', 'ss.ss_item_sk'),
+            (r'\bcs_item_sk\b', 'cs.cs_item_sk'),
+            (r'\bws_item_sk\b', 'ws.ws_item_sk'),
+            (r'\bi_item_sk\b', 'i.i_item_sk'),
+            (r'\bi_brand_id\b', 'i.i_brand_id'),
+            (r'\bi_class_id\b', 'i.i_class_id'),
+            (r'\bi_category_id\b', 'i.i_category_id')
+        ]
+        
+        for pattern, replacement in unqualified_patterns:
+            if re.search(pattern, fixed_query) and not re.search(pattern.replace(r'\b', r'\w*\.'), fixed_query):
+                # 未修飾の参照があり、修飾された参照がない場合のみ修正
+                original_count = len(re.findall(pattern, fixed_query))
+                fixed_query = re.sub(pattern, replacement, fixed_query)
+                qualified_count = len(re.findall(pattern, fixed_query))
+                
+                if original_count != qualified_count:
+                    modifications.append(f"{pattern} → {replacement}")
+        
+        # パターン4: CTE内の参照修正
+        # WITH句内でのエイリアス参照の修正
+        cte_ambiguous_pattern = r'(WITH\s+\w+\s+AS\s*\([^)]*)\bss_item_sk\b([^)]*\))'
+        if re.search(cte_ambiguous_pattern, fixed_query, re.IGNORECASE | re.DOTALL):
+            fixed_query = re.sub(
+                cte_ambiguous_pattern,
+                r'\1ss.ss_item_sk\2',
+                fixed_query,
+                flags=re.IGNORECASE | re.DOTALL
+            )
+            modifications.append("CTE内のss_item_sk → ss.ss_item_sk")
+        
+        # 修正結果の出力
+        if modifications:
+            print(f"✅ AMBIGUOUS_REFERENCE修正を適用: {len(modifications)}箇所")
+            for mod in modifications[:5]:  # 最初の5個を表示
+                print(f"   📝 {mod}")
+            if len(modifications) > 5:
+                print(f"   📝 ... 他{len(modifications) - 5}箇所")
+            return fixed_query
+        else:
+            print("✅ AMBIGUOUS_REFERENCE修正の必要なし")
+            return sql_query
+            
+    except Exception as e:
+        print(f"⚠️ AMBIGUOUS_REFERENCE修正でエラー: {str(e)}")
+        print("🔄 元のクエリを返します")
+        return sql_query
+
+
 def fix_incomplete_sql_syntax(sql_query: str) -> str:
     """
     不完全なSQL構文の検出と修正
@@ -10825,8 +10923,13 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
         # パフォーマンス比較実行
         print(f"🔍 試行{attempt_num}: パフォーマンス悪化検出を実行")
         
+        # 🎯 修正済み元クエリを使用（AMBIGUOUS_REFERENCEエラー防止）
+        corrected_original_query = globals().get('original_query_corrected', original_query)
+        if corrected_original_query != original_query:
+            print("💾 キャッシュされた修正済み元クエリを使用: AMBIGUOUS_REFERENCEエラー防止")
+        
         # 元クエリのEXPLAIN COST取得
-        original_explain_cost_result = execute_explain_and_save_to_file(original_query, "original_performance_check")
+        original_explain_cost_result = execute_explain_and_save_to_file(corrected_original_query, "original_performance_check")
         
         # 最適化クエリのEXPLAIN COST取得
         optimized_explain_cost_result = execute_explain_and_save_to_file(current_query, f"optimized_attempt_{attempt_num}")
@@ -10834,10 +10937,23 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
         performance_comparison = None
         degradation_analysis = None
         
-        if ('explain_cost_file' in original_explain_cost_result and 
-            'explain_cost_file' in optimized_explain_cost_result and
-            'error_file' not in original_explain_cost_result and
-            'error_file' not in optimized_explain_cost_result):
+        # 🔍 EXPLAIN COSTエラーハンドリングの改善
+        original_cost_success = ('explain_cost_file' in original_explain_cost_result and 
+                                'error_file' not in original_explain_cost_result)
+        optimized_cost_success = ('explain_cost_file' in optimized_explain_cost_result and 
+                                 'error_file' not in optimized_explain_cost_result)
+        
+        if not original_cost_success:
+            print("⚠️ 元クエリのEXPLAIN COST実行失敗: パフォーマンス比較をスキップ")
+            if 'error_file' in original_explain_cost_result:
+                print(f"📄 エラー詳細: {original_explain_cost_result['error_file']}")
+        
+        if not optimized_cost_success:
+            print("⚠️ 最適化クエリのEXPLAIN COST実行失敗: パフォーマンス比較をスキップ")
+            if 'error_file' in optimized_explain_cost_result:
+                print(f"📄 エラー詳細: {optimized_explain_cost_result['error_file']}")
+        
+        if (original_cost_success and optimized_cost_success):
             
             try:
                 # EXPLAIN COST内容を読み込み
@@ -11801,9 +11917,25 @@ elif original_query_for_explain and original_query_for_explain.strip():
             else:
                 analysis_result_str = str(current_analysis_result)
             
-            # 🔍 ステップ1: オリジナルクエリのEXPLAIN実行
+            # 🔍 ステップ1: オリジナルクエリのEXPLAIN実行（事前修正付き）
             print("\n📋 ステップ1: オリジナルクエリのEXPLAIN実行（Photon対応状況分析）")
             print("-" * 60)
+            
+            # 🔧 元のクエリのAMBIGUOUS_REFERENCE事前修正
+            print("🔧 元のクエリのAMBIGUOUS_REFERENCE事前チェック中...")
+            original_query_validated = fix_common_ambiguous_references(original_query_for_explain)
+            
+            if original_query_validated != original_query_for_explain:
+                print("✅ 元のクエリのAMBIGUOUS_REFERENCE修正を適用")
+                print(f"📝 修正箇所: テーブルエイリアス明示化")
+                original_query_for_explain = original_query_validated
+            else:
+                print("✅ 元のクエリに修正の必要なし")
+            
+            # 🎯 修正済み元クエリをグローバル変数として保存（重複処理防止）
+            globals()['original_query_corrected'] = original_query_validated
+            print("💾 修正済み元クエリをキャッシュ: 重複処理防止")
+            
             original_explain_result = execute_explain_and_save_to_file(original_query_for_explain, "original")
             
             if 'explain_file' in original_explain_result:
