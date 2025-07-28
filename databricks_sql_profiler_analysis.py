@@ -5963,10 +5963,14 @@ def extract_structured_physical_plan(physical_plan: str) -> Dict[str, Any]:
         
         # 🚨 トークン制限対策: 情報量が多い場合の自動要約
         total_joins_scans = join_count + scan_count
-        if total_joins_scans > 10:  # 閾値: JOIN+SCAN合計が10個以上
+        if total_joins_scans > 30:  # 閾値を大幅に引き上げ: JOIN+SCAN合計が30個以上
             # 重要度順に並び替えてトップ情報のみ保持
-            extracted = apply_token_limit_optimization(extracted, max_joins=5, max_scans=8)
+            extracted = apply_token_limit_optimization(extracted, max_joins=20, max_scans=15)  # 制限を大幅緩和
             extracted["extraction_summary"] += f" → トークン制限対策でJOIN/SCAN情報を要約済み"
+        elif total_joins_scans > 15:  # 中間閾値: 15-30個の場合
+            # 中程度の要約
+            extracted = apply_token_limit_optimization(extracted, max_joins=12, max_scans=10)
+            extracted["extraction_summary"] += f" → 中程度のJOIN/SCAN情報要約済み"
         
     except Exception as e:
         extracted["extraction_error"] = str(e)
