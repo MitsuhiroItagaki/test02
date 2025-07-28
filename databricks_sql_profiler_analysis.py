@@ -11344,15 +11344,8 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                             'memory_ratio': performance_comparison['memory_usage_ratio']
                         })
                         
-                        # 成功: 最適化クエリとレポートを保存
-                        saved_files = save_optimized_sql_files(
-                            original_query_for_explain,
-                            current_query,
-                            metrics,
-                            analysis_result,
-                            optimized_query_str,
-                            performance_comparison
-                        )
+                        # 🚨 修正: 重複保存を防止（メイン処理で一括保存するため、ここでは保存しない）
+                        # saved_files = save_optimized_sql_files(...)  # ← 重複防止のためコメントアウト
                         
                         return {
                             'final_status': 'optimization_success',
@@ -11361,7 +11354,8 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                             'total_attempts': attempt_num,
                             'optimization_attempts': optimization_attempts,
                             'performance_comparison': performance_comparison,
-                            'saved_files': saved_files
+                            'optimized_result': optimized_query_str,  # 🔧 メイン処理での保存用に追加
+                            'saved_files': None  # 🔧 メイン処理で保存するためNone
                         }
                     
                 except Exception as e:
@@ -11447,15 +11441,8 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                         'memory_ratio': performance_comparison['memory_usage_ratio']
                     })
                     
-                    # 成功: 最適化クエリとレポートを保存
-                    saved_files = save_optimized_sql_files(
-                        original_query_for_explain,
-                        current_query,
-                        metrics,
-                        analysis_result,
-                        optimized_query_str,
-                        performance_comparison
-                    )
+                    # 🚨 修正: 重複保存を防止（メイン処理で一括保存するため、ここでは保存しない）
+                    # saved_files = save_optimized_sql_files(...)  # ← 重複防止のためコメントアウト
                     
                     return {
                         'final_status': 'optimization_success',
@@ -11464,7 +11451,8 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                         'total_attempts': attempt_num,
                         'optimization_attempts': optimization_attempts,
                         'performance_comparison': performance_comparison,
-                        'saved_files': saved_files
+                        'optimized_result': optimized_query_str,  # 🔧 メイン処理での保存用に追加
+                        'saved_files': None  # 🔧 メイン処理で保存するためNone
                     }
             
             except Exception as e:
@@ -11513,15 +11501,8 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                 'note': 'EXPLAIN COST comparison skipped due to execution failure'
             })
             
-            # EXPLAIN COSTが取得できない場合でも構文的に正常なクエリは使用可能
-            saved_files = save_optimized_sql_files(
-                original_query_for_explain,
-                current_query,
-                metrics,
-                analysis_result,
-                optimized_query_str,
-                None  # performance_comparison
-            )
+            # 🚨 修正: EXPLAIN COSTが取得できない場合も重複保存を防止
+            # saved_files = save_optimized_sql_files(...)  # ← 重複防止のためコメントアウト
             
             return {
                 'final_status': 'partial_success',
@@ -11529,7 +11510,8 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                 'successful_attempt': attempt_num,
                 'total_attempts': attempt_num,
                 'optimization_attempts': optimization_attempts,
-                'saved_files': saved_files,
+                'optimized_result': optimized_query_str,  # 🔧 メイン処理での保存用に追加
+                'saved_files': None,  # 🔧 メイン処理で保存するためNone
                 'note': 'Performance comparison unavailable but query is syntactically valid'
             }
     
