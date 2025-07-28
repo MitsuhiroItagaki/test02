@@ -10637,6 +10637,7 @@ def compare_query_performance(original_explain_cost: str, optimized_explain_cost
     comparison_result = {
         'is_optimization_beneficial': True,
         'performance_degradation_detected': False,
+        'significant_improvement_detected': False,  # 🚨 明確な改善検出フラグ追加
         'total_cost_ratio': 1.0,
         'memory_usage_ratio': 1.0,
         'scan_cost_ratio': 1.0,
@@ -10770,10 +10771,16 @@ def compare_query_performance(original_explain_cost: str, optimized_explain_cost
             elif optimized_metrics['join_operations'] > original_metrics['join_operations']:
                 performance_factors.append(f"JOIN操作増加: {original_metrics['join_operations']} → {optimized_metrics['join_operations']}操作（軽微）")
             
-            # 🚨 厳格な総合判定（ユーザー要求：保守的アプローチ）
+            # 🚨 厳格な総合判定（ユーザー要求：明確な改善のみ成功）
             has_improvement = any("改善" in factor for factor in performance_factors)
             has_cost_increase = any("実行コスト増加" in factor for factor in performance_factors)
             has_memory_increase = any("メモリ使用量増加" in factor for factor in performance_factors)
+            
+            # 🚨 明確な改善検出（1%以上の改善のみ）
+            has_significant_improvement = (
+                comparison_result['total_cost_ratio'] < COST_IMPROVEMENT_THRESHOLD or
+                comparison_result['memory_usage_ratio'] < MEMORY_IMPROVEMENT_THRESHOLD
+            )
             
             # 🚨 厳格判定：1%以上の増加でも元クエリ推奨
             if has_cost_increase or has_memory_increase:
@@ -10782,10 +10789,13 @@ def compare_query_performance(original_explain_cost: str, optimized_explain_cost
                 comparison_result['performance_degradation_detected'] = True
                 comparison_result['is_optimization_beneficial'] = False  
                 comparison_result['recommendation'] = 'use_original'
-            elif has_improvement:
-                performance_factors.insert(0, "✅ パフォーマンス改善を確認（最適化クエリ推奨）")
+                comparison_result['significant_improvement_detected'] = False
+            elif has_significant_improvement:
+                performance_factors.insert(0, "✅ 明確なパフォーマンス改善を確認（最適化クエリ推奨）")
+                comparison_result['significant_improvement_detected'] = True
             else:
-                performance_factors.insert(0, "➖ パフォーマンス同等（変化なし）")
+                performance_factors.insert(0, "➖ パフォーマンス同等（明確な改善なし）")
+                comparison_result['significant_improvement_detected'] = False
             
             comparison_result['details'] = performance_factors
         
@@ -11105,6 +11115,7 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                     performance_comparison = {
                         'is_optimization_beneficial': fallback_evaluation['recommendation'] == 'use_optimized',
                         'performance_degradation_detected': fallback_evaluation['overall_status'] == 'degradation_possible',
+                        'significant_improvement_detected': fallback_evaluation['overall_status'] == 'clear_improvement',  # 🚨 フォールバック評価でも明確改善検出
                         'recommendation': fallback_evaluation['recommendation'],
                         'evaluation_type': 'fallback_plan_analysis',
                         'details': fallback_evaluation['details'],
@@ -11114,6 +11125,62 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                     }
                     
                     print("✅ フォールバック パフォーマンス評価完了")
+                    
+                    # 🚨 フォールバック評価でも厳格判定適用
+                    if not performance_comparison.get('significant_improvement_detected', False):
+                        if performance_comparison['performance_degradation_detected']:
+                            print(f"🚨 試行{attempt_num}: フォールバック評価で悪化の可能性")
+                            status_reason = "fallback_degradation_detected"
+                        else:
+                            print(f"⚠️ 試行{attempt_num}: フォールバック評価で明確な改善が確認できません")
+                            status_reason = "fallback_insufficient_improvement"
+                        
+                        optimization_attempts.append({
+                            'attempt': attempt_num,
+                            'status': status_reason,
+                            'optimized_query': current_query,
+                            'performance_comparison': performance_comparison,
+                            'cost_ratio': performance_comparison['total_cost_ratio'],
+                            'memory_ratio': performance_comparison['memory_usage_ratio']
+                        })
+                        
+                        # 最後の試行でない場合は次の改善を試行
+                        if attempt_num < max_optimization_attempts:
+                            print(f"🔄 試行{attempt_num + 1}で明確な改善を試みます（フォールバック評価）")
+                            continue
+                        else:
+                            print(f"❌ 最大試行回数({max_optimization_attempts})に到達、元クエリを使用")
+                            break
+                    else:
+                        print(f"✅ 試行{attempt_num}: フォールバック評価で明確な改善を確認！")
+                        optimization_attempts.append({
+                            'attempt': attempt_num,
+                            'status': 'fallback_success',
+                            'optimized_query': current_query,
+                            'performance_comparison': performance_comparison,
+                            'cost_ratio': performance_comparison['total_cost_ratio'],
+                            'memory_ratio': performance_comparison['memory_usage_ratio']
+                        })
+                        
+                        # 成功: 最適化クエリとレポートを保存
+                        saved_files = save_optimized_sql_files(
+                            original_query_for_explain,
+                            current_query,
+                            metrics,
+                            analysis_result,
+                            optimized_query_str,
+                            performance_comparison
+                        )
+                        
+                        return {
+                            'final_status': 'optimization_success',
+                            'final_query': current_query,
+                            'successful_attempt': attempt_num,
+                            'total_attempts': attempt_num,
+                            'optimization_attempts': optimization_attempts,
+                            'performance_comparison': performance_comparison,
+                            'saved_files': saved_files
+                        }
                     
                 except Exception as e:
                     print(f"❌ フォールバック評価でもエラー: {str(e)}")
@@ -11135,18 +11202,24 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                 # パフォーマンス比較実行
                 performance_comparison = compare_query_performance(original_cost_content, optimized_cost_content)
                 
-                if performance_comparison['performance_degradation_detected']:
-                    print(f"🚨 試行{attempt_num}: パフォーマンス悪化を検出")
+                # 🚨 厳格判定：明確な改善がない場合は再試行
+                if not performance_comparison.get('significant_improvement_detected', False):
+                    
+                    if performance_comparison['performance_degradation_detected']:
+                        print(f"🚨 試行{attempt_num}: パフォーマンス増加を検出")
+                        status_reason = "performance_degraded"
+                    else:
+                        print(f"⚠️ 試行{attempt_num}: 明確な改善が確認できません")
+                        status_reason = "insufficient_improvement"
                     
                     # 悪化原因分析
                     degradation_analysis = analyze_degradation_causes(performance_comparison, original_cost_content, optimized_cost_content)
                     
-                    print(f"   原因: {degradation_analysis['primary_cause']}")
-                    print(f"   詳細: {', '.join(degradation_analysis['specific_issues'])}")
+                    print(f"   詳細: {', '.join(performance_comparison.get('details', []))}")
                     
                     optimization_attempts.append({
                         'attempt': attempt_num,
-                        'status': 'performance_degraded',
+                        'status': status_reason,
                         'optimized_query': current_query,
                         'performance_comparison': performance_comparison,
                         'degradation_analysis': degradation_analysis,
@@ -11156,14 +11229,14 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                     
                     # 最後の試行でない場合は次の改善を試行
                     if attempt_num < max_optimization_attempts:
-                        print(f"🔄 試行{attempt_num + 1}で改善を試みます")
+                        print(f"🔄 試行{attempt_num + 1}で明確な改善を試みます")
                         continue
                     else:
                         print(f"❌ 最大試行回数({max_optimization_attempts})に到達、元クエリを使用")
                         break
                         
                 else:
-                    print(f"✅ 試行{attempt_num}: パフォーマンス改善を確認！")
+                    print(f"✅ 試行{attempt_num}: 明確なパフォーマンス改善を確認！")
                     optimization_attempts.append({
                         'attempt': attempt_num,
                         'status': 'success',
