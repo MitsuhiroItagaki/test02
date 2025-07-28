@@ -12518,22 +12518,45 @@ elif original_query_for_explain and original_query_for_explain.strip():
                     
         except Exception as e:
             print(f"❌ 統合処理中にエラーが発生: {str(e)}")
-            print("   従来のEXPLAIN実行に切り替えます...")
+            print("🚨 緊急エラーの詳細:")
+            import traceback
+            traceback.print_exc()
+            print("   緊急フォールバック: 基本分析と最小限のファイル生成を実行します...")
             
-            # フォールバック: 従来のEXPLAIN実行（オリジナルクエリ）
-            explain_results = execute_explain_and_save_to_file(original_query_for_explain, "original")
-            
-            if explain_results:
-                print("\n📁 生成されたファイル:")
-                for file_type, filename in explain_results.items():
-                    if file_type == 'explain_file':
-                        print(f"   📄 EXPLAIN結果: {filename}")
-                    elif file_type == 'error_file':
-                        print(f"   📄 エラーログ: {filename}")
-                    elif file_type == 'plan_lines':
-                        print(f"   📊 実行プラン行数: {filename}")
-                    elif file_type == 'error_message':
-                        print(f"   ❌ エラーメッセージ: {filename}")
+            try:
+                # フォールバック: 従来のEXPLAIN実行（オリジナルクエリ）
+                explain_results = execute_explain_and_save_to_file(original_query_for_explain, "original")
+                
+                if explain_results:
+                    print("\n📁 EXPLAIN結果:")
+                    for file_type, filename in explain_results.items():
+                        if file_type == 'explain_file':
+                            print(f"   📄 EXPLAIN結果: {filename}")
+                        elif file_type == 'error_file':
+                            print(f"   📄 エラーログ: {filename}")
+                        elif file_type == 'plan_lines':
+                            print(f"   📊 実行プラン行数: {filename}")
+                        elif file_type == 'error_message':
+                            print(f"   ❌ エラーメッセージ: {filename}")
+                
+                # 🚨 緊急修正: エラー時でもレポートファイルを強制生成
+                print("🚨 緊急レポート生成を実行中...")
+                emergency_saved_files = save_optimized_sql_files(
+                    original_query_for_explain,
+                    original_query_for_explain,  # 最適化失敗時は元クエリを使用
+                    current_metrics if 'current_metrics' in locals() else {},
+                    "緊急フォールバック: 統合処理でエラーが発生したため、基本分析のみ実行",
+                    f"緊急フォールバック処理\n\nエラー詳細:\n{str(e)}\n\n元クエリをそのまま使用しています。",
+                    None  # パフォーマンス比較結果なし
+                )
+                
+                print("\n📁 緊急生成ファイル:")
+                for file_type, filename in emergency_saved_files.items():
+                    print(f"   📄 {file_type}: {filename}")
+                    
+            except Exception as emergency_error:
+                print(f"🚨 緊急フォールバック処理でもエラー: {str(emergency_error)}")
+                print("⚠️ 手動でクエリを確認してください")
         
         print("\n✅ 統合SQL最適化処理が完了しました")
         
@@ -12768,6 +12791,34 @@ try:
     if not latest_report:
         print("❌ レポートファイルが見つかりません")
         print("⚠️ セル43 (統合SQL最適化処理) を先に実行してください")
+        print()
+        print("🔍 詳細なトラブルシューティング:")
+        print("1. セル43が正常に完了しているかご確認ください")
+        print("2. エラーメッセージが表示されていないかご確認ください")
+        print("3. current_analysis_result、extracted_metrics等の変数が定義されているかご確認ください")
+        print("4. 緊急フォールバック処理が実行されている場合があります")
+        
+        # 関連ファイルの存在チェック
+        import glob
+        sql_files = glob.glob("output_optimized_query_*.sql")
+        original_files = glob.glob("output_original_query_*.sql")
+        all_reports = glob.glob("output_optimization_report*.md")
+        
+        print(f"\n📁 現在のファイル状況:")
+        print(f"   📄 最適化クエリファイル: {len(sql_files)} 個")
+        print(f"   📄 オリジナルクエリファイル: {len(original_files)} 個")
+        print(f"   📄 レポートファイル（全体）: {len(all_reports)} 個")
+        
+        if all_reports:
+            print(f"   📋 検出されたレポートファイル:")
+            for report in all_reports:
+                print(f"      - {report}")
+            print("   ⚠️ ファイルが存在するにも関わらず find_latest_report_file() で検出されていません")
+            print("   💡 手動でファイル名を確認し、パターンマッチングの問題の可能性があります")
+        
+        if not sql_files and not original_files:
+            print("   🚨 重要: セル43の処理が全く実行されていない可能性があります")
+            print("   📋 対処法: セル43を最初から実行し直してください")
     else:
         print(f"📄 対象レポートファイル: {latest_report}")
         
