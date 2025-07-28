@@ -6549,7 +6549,12 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
         "detailed_size_analysis": [],
         "execution_plan_analysis": {},
         "existing_broadcast_nodes": [],
-        "broadcast_applied_tables": []
+        "broadcast_applied_tables": [],
+        # 🚨 緊急修正: 30mb_hit_analysis キー追加（KeyError防止）
+        "30mb_hit_analysis": {
+            "has_30mb_candidates": False,
+            "reason": "BROADCASTヒントは無効化されているため分析対象外"
+        }
     }
     
     # プラン情報をメトリクスに追加（ファイル出力で使用）

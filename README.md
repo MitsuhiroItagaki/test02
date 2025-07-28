@@ -608,6 +608,47 @@ broadcast_analysis = {
 - ✅ パフォーマンス評価ロジックの完全復旧
 - ✅ 「本当に許せません」状況の即座解決
 
+#### 🚨 ANOTHER KEYERROR FIX - 30mb_hit_analysis欠損修正 (v2.7.7)
+
+**ユーザー再報告**:
+```
+❌ セル45でデグレが直りません
+❌ KeyError: '30mb_hit_analysis'
+```
+
+**再発した理由**:
+- v2.7.6で `already_optimized` キーは修正したが、`30mb_hit_analysis` キーが欠損
+- BROADCASTヒント除去時の辞書構造が不完全
+- `generate_optimized_query_with_llm` 関数で新たなKeyError発生
+
+**新たなKeyError詳細**:
+```python
+# エラー発生箇所
+if broadcast_analysis["30mb_hit_analysis"]["has_30mb_candidates"]:
+KeyError: '30mb_hit_analysis'  # このキーが存在しない
+```
+
+**緊急修正内容**:
+
+**1. 🚨 30mb_hit_analysis キー構造追加**:
+```python
+"30mb_hit_analysis": {
+    "has_30mb_candidates": False,
+    "reason": "BROADCASTヒントは無効化されているため分析対象外"
+}
+```
+
+**2. 🔍 完全性確保**:
+- BROADCASTヒント無効化でも、アクセスされるキーは最低限含める
+- `has_30mb_candidates: False` で安全な無効化状態を維持
+- コードクラッシュを防ぎつつ、機能無効化を明示
+
+**保証事項**:
+- ✅ KeyError '30mb_hit_analysis' 完全解決
+- ✅ BROADCASTヒント無効化状態での安全動作
+- ✅ セル45デグレーション完全修正
+- ✅ パフォーマンス評価ロジック正常動作復旧
+
 ### 🚨 LLMトークン制限エラーの解決
 
 #### **発生パターン**
