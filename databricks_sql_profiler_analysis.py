@@ -5806,18 +5806,32 @@ def analyze_broadcast_feasibility(metrics: Dict[str, Any], original_query: str, 
 
 def extract_cost_statistics_from_explain_cost(explain_cost_content: str) -> str:
     """
-    EXPLAIN COST結果から統計情報を抽出して構造化（改善版）
+    EXPLAIN COST結果から統計情報を抽出して構造化（改善版 + サイズ制限）
     
     Args:
         explain_cost_content: EXPLAIN COSTの結果文字列
     
     Returns:
-        構造化された統計情報文字列
+        構造化された統計情報文字列（レポート用に簡潔化）
     """
     if not explain_cost_content:
         return ""
     
-    statistics_info = []
+    # 🚨 レポート肥大化防止：サマリー情報のみ抽出
+    statistics_counts = {
+        "テーブル統計": 0,
+        "行数情報": 0, 
+        "サイズ情報": 0,
+        "コスト情報": 0,
+        "選択率情報": 0,
+        "パーティション情報": 0,
+        "メモリ情報": 0,
+        "JOIN情報": 0
+    }
+    
+    # 重要な統計値のみ抽出（詳細は除外）
+    key_statistics = []
+    MAX_KEY_STATS = 5  # 重要統計情報の最大数
     
     try:
         lines = explain_cost_content.split('\n')
@@ -5827,47 +5841,58 @@ def extract_cost_statistics_from_explain_cost(explain_cost_content: str) -> str:
             if not line:
                 continue
                 
-            # テーブル統計情報の抽出（改善）
+            # テーブル統計情報の抽出（カウントのみ）
             if 'statistics=' in line.lower() or 'stats=' in line.lower() or 'Statistics(' in line:
-                statistics_info.append(f"📊 テーブル統計: {line}")
+                statistics_counts["テーブル統計"] += 1
+                if len(key_statistics) < MAX_KEY_STATS and 'sizeInBytes' in line:
+                    # 重要なサイズ情報のみ抽出
+                    if 'GiB' in line or 'TiB' in line:
+                        key_statistics.append(f"📊 テーブルサイズ: {line[:100]}...")
             
-            # 行数情報の抽出（改善）
+            # 行数情報の抽出（カウントのみ）
             elif 'rows=' in line.lower() or 'rowcount=' in line.lower() or 'rows:' in line.lower():
-                statistics_info.append(f"📈 行数情報: {line}")
+                statistics_counts["行数情報"] += 1
             
-            # サイズ情報の抽出（改善）
+            # サイズ情報の抽出（カウントのみ）
             elif ('size=' in line.lower() or 'sizeinbytes=' in line.lower() or 'sizeInBytes=' in line 
                   or 'GB' in line or 'MB' in line or 'size:' in line.lower()):
-                statistics_info.append(f"💾 サイズ情報: {line}")
+                statistics_counts["サイズ情報"] += 1
             
-            # コスト情報の抽出（改善）
-            elif ('cost=' in line.lower() or 'Cost(' in line or 'cost:' in line.lower() 
-                  or 'costs:' in line.lower() or 'estimated cost' in line.lower()):
-                statistics_info.append(f"💰 コスト情報: {line}")
-            
-            # 選択率情報の抽出（改善）
-            elif ('selectivity=' in line.lower() or 'filter=' in line.lower() or 'selectivity:' in line.lower()
-                  or 'selection' in line.lower()):
-                statistics_info.append(f"🎯 選択率情報: {line}")
-            
-            # パーティション情報の抽出（改善）
-            elif ('partition' in line.lower() and ('count' in line.lower() or 'size' in line.lower()
-                  or 'average' in line.lower() or 'per partition' in line.lower())):
-                statistics_info.append(f"🔄 パーティション情報: {line}")
-            
-            # メモリ情報の抽出（新規追加）
-            elif ('memory' in line.lower() or 'spill' in line.lower() or 'threshold' in line.lower()):
-                statistics_info.append(f"💾 メモリ情報: {line}")
-            
-            # JOIN情報の抽出（新規追加）
-            elif ('join' in line.lower() and ('cost' in line.lower() or 'selectivity' in line.lower()
-                  or 'input' in line.lower() or 'output' in line.lower())):
-                statistics_info.append(f"🔗 JOIN情報: {line}")
+            # その他の統計情報のカウント
+            elif ('cost=' in line.lower() or 'Cost(' in line or 'cost:' in line.lower()):
+                statistics_counts["コスト情報"] += 1
+            elif ('selectivity=' in line.lower() or 'filter=' in line.lower()):
+                statistics_counts["選択率情報"] += 1
+            elif ('partition' in line.lower() and ('count' in line.lower() or 'size' in line.lower())):
+                statistics_counts["パーティション情報"] += 1
+            elif ('memory' in line.lower() or 'spill' in line.lower()):
+                statistics_counts["メモリ情報"] += 1
+            elif ('join' in line.lower() and ('cost' in line.lower() or 'selectivity' in line.lower())):
+                statistics_counts["JOIN情報"] += 1
     
     except Exception as e:
-        statistics_info.append(f"⚠️ 統計情報抽出エラー: {str(e)}")
+        return f"⚠️ 統計情報抽出エラー: {str(e)}"
     
-    return '\n'.join(statistics_info) if statistics_info else "統計情報が見つかりませんでした"
+    # 簡潔なサマリーを生成
+    summary_lines = ["## 📊 統計情報サマリー（簡潔版）"]
+    
+    total_stats = sum(statistics_counts.values())
+    if total_stats > 0:
+        summary_lines.append(f"- **総統計項目数**: {total_stats}個")
+        
+        for stat_type, count in statistics_counts.items():
+            if count > 0:
+                summary_lines.append(f"- **{stat_type}**: {count}個")
+        
+        if key_statistics:
+            summary_lines.append("\n### 🎯 主要統計")
+            summary_lines.extend(key_statistics)
+        
+        summary_lines.append(f"\n💡 詳細な統計情報は DEBUG_ENABLED='Y' で確認できます")
+    else:
+        summary_lines.append("- 統計情報が見つかりませんでした")
+    
+    return '\n'.join(summary_lines)
 
 
 def generate_optimized_query_with_llm(original_query: str, analysis_result: str, metrics: Dict[str, Any]) -> str:
@@ -7753,9 +7778,9 @@ def generate_comprehensive_optimization_report(query_id: str, optimized_result: 
 | パーティション最適化 | 約50% | 約90% | **+40%** |
 | 全体最適化効果 | 平均30%改善 | 平均60%改善 | **+30%** |
 
-### 🎯 主要統計情報
+### 🎯 統計情報概要
 
-{summary_results['cost_statistics_summary']}
+統計情報による最適化が実行されました（詳細はDEBUG_ENABLED='Y'で確認可能）。
 
 """
             explain_cost_section = ""  # 統合セクションなので個別セクションは不要
@@ -7782,9 +7807,9 @@ The following improvement effects can be expected by leveraging statistical info
 | Partition Optimization | ~50% | ~90% | **+40%** |
 | Overall Optimization Effect | Average 30% improvement | Average 60% improvement | **+30%** |
 
-### 🎯 Key Statistical Information
+### 🎯 Statistical Information Overview
 
-{summary_results['cost_statistics_summary']}
+Statistical optimization has been executed (details available with DEBUG_ENABLED='Y').
 
 """
             explain_cost_section = ""  # Integrated section, so no separate section needed
