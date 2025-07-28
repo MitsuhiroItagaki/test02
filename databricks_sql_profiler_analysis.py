@@ -9426,6 +9426,150 @@ def fix_broadcast_hint_placement(sql_query: str) -> str:
     
     return sql_query
 
+
+def fix_join_broadcast_hint_placement(sql_query: str) -> str:
+    """
+    JOIN句内のBROADCASTヒント配置エラーを強制修正（PARSE_SYNTAX_ERROR対策）
+    ユーザー報告のエラーケース： join /*+ BROADCAST(i) */ item i ON ...
+    """
+    import re
+    
+    try:
+        # JOIN句内のBROADCASTヒントを検出・抽出
+        join_broadcast_pattern = r'JOIN\s+/\*\+\s*BROADCAST\(([^)]+)\)\s*\*/\s*(\w+)'
+        join_broadcast_matches = re.findall(join_broadcast_pattern, sql_query, re.IGNORECASE | re.MULTILINE)
+        
+        if not join_broadcast_matches:
+            # JOIN句内のBROADCASTヒントがない場合はそのまま返す
+            return sql_query
+        
+        print(f"🔧 JOIN句内のBROADCASTヒントを検出: {len(join_broadcast_matches)}個")
+        
+        # 抽出されたBROADCAST対象テーブル名/エイリアス名を収集
+        broadcast_tables = []
+        for table_name, table_alias in join_broadcast_matches:
+            # カンマ区切りの場合も考慮
+            tables = [t.strip() for t in table_name.split(',')]
+            broadcast_tables.extend(tables)
+            # エイリアス名も追加（重複削除は後で行う）
+            if table_alias.strip():
+                broadcast_tables.append(table_alias.strip())
+        
+        # 重複削除
+        broadcast_tables = list(set(broadcast_tables))
+        print(f"📋 BROADCAST対象: {', '.join(broadcast_tables)}")
+        
+        # JOIN句内のBROADCASTヒントを削除
+        fixed_query = re.sub(
+            r'JOIN\s+/\*\+\s*BROADCAST\([^)]+\)\s*\*/\s*',
+            'JOIN ',
+            sql_query,
+            flags=re.IGNORECASE | re.MULTILINE
+        )
+        
+        # メインクエリの最初のSELECT文を検出
+        select_pattern = r'^(\s*SELECT)\s+'
+        select_match = re.search(select_pattern, fixed_query, re.IGNORECASE | re.MULTILINE)
+        
+        if select_match:
+            # 既存のヒント句があるかチェック
+            existing_hint_pattern = r'^(\s*SELECT)\s+(/\*\+[^*]*\*/)\s+'
+            existing_hint_match = re.search(existing_hint_pattern, fixed_query, re.IGNORECASE | re.MULTILINE)
+            
+            if existing_hint_match:
+                # 既存のヒント句にBROADCASTを追加
+                existing_hint = existing_hint_match.group(2)
+                
+                # 既存のBROADCAST指定を確認
+                existing_broadcast_pattern = r'BROADCAST\(([^)]+)\)'
+                existing_broadcast_match = re.search(existing_broadcast_pattern, existing_hint, re.IGNORECASE)
+                
+                if existing_broadcast_match:
+                    # 既存のBROADCAST指定に追加
+                    existing_broadcast_tables = [t.strip() for t in existing_broadcast_match.group(1).split(',')]
+                    all_broadcast_tables = list(set(existing_broadcast_tables + broadcast_tables))
+                    new_broadcast = f"BROADCAST({', '.join(all_broadcast_tables)})"
+                    new_hint = re.sub(
+                        r'BROADCAST\([^)]+\)',
+                        new_broadcast,
+                        existing_hint,
+                        flags=re.IGNORECASE
+                    )
+                else:
+                    # 既存のヒント句にBROADCASTを追加
+                    broadcast_hint = f"BROADCAST({', '.join(broadcast_tables)})"
+                    # ヒント句の末尾の */ の前に追加
+                    new_hint = existing_hint.replace('*/', f', {broadcast_hint} */')
+                
+                # ヒント句を置換
+                fixed_query = re.sub(
+                    r'^(\s*SELECT)\s+(/\*\+[^*]*\*/)\s+',
+                    f'{select_match.group(1)} {new_hint} ',
+                    fixed_query,
+                    flags=re.IGNORECASE | re.MULTILINE
+                )
+            else:
+                # 新しくヒント句を追加
+                broadcast_hint = f"/*+ BROADCAST({', '.join(broadcast_tables)}) */"
+                fixed_query = re.sub(
+                    r'^(\s*SELECT)\s+',
+                    f'{select_match.group(1)} {broadcast_hint} ',
+                    fixed_query,
+                    flags=re.IGNORECASE | re.MULTILINE
+                )
+            
+            print(f"✅ BROADCASTヒントを正しい位置に移動完了")
+            return fixed_query
+        else:
+            print("⚠️ メインクエリのSELECT文が見つからない、元のクエリを返す")
+            return sql_query
+            
+    except Exception as e:
+        print(f"⚠️ JOIN BROADCAST配置修正でエラー: {str(e)}")
+        print("🔄 元のクエリを返します")
+        return sql_query
+
+
+def enhance_error_correction_with_syntax_validation(corrected_query: str, original_query: str, error_info: str) -> str:
+    """
+    エラー修正後のクエリを検証し、PARSE_SYNTAX_ERRORが解決されていない場合は元クエリにフォールバック
+    """
+    
+    try:
+        # 修正されたクエリの後処理
+        print("🔧 修正クエリの後処理を実行中...")
+        
+        # JOIN句内のBROADCAST配置の強制修正
+        final_query = fix_join_broadcast_hint_placement(corrected_query)
+        
+        # 基本的な構文チェック
+        if "/*+" in error_info and "PARSE_SYNTAX_ERROR" in error_info:
+            # PARSE_SYNTAX_ERRORの場合は特に厳格にチェック
+            
+            # JOIN句内のBROADCASTヒントが残っているかチェック
+            import re
+            join_broadcast_pattern = r'JOIN\s+/\*\+\s*BROADCAST\([^)]+\)\s*\*/'
+            if re.search(join_broadcast_pattern, final_query, re.IGNORECASE | re.MULTILINE):
+                print("🚨 修正後でもJOIN句内にBROADCASTヒントが残存、元クエリを使用")
+                return f"""-- ❌ PARSE_SYNTAX_ERROR修正失敗のため、元のクエリを使用
+-- 📋 エラー内容: {error_info[:200]}
+-- 💡 推奨: 手動でBROADCASTヒントの配置を修正してください
+
+{original_query}"""
+        
+        print("✅ 修正クエリの検証完了")
+        return final_query
+        
+    except Exception as e:
+        print(f"⚠️ 修正後検証でエラー: {str(e)}")
+        print("🔄 安全のため元クエリを使用")
+        return f"""-- ❌ エラー修正検証中にエラーが発生、元のクエリを使用
+-- 📋 検証エラー: {str(e)}
+-- 📋 元のエラー: {error_info[:200]}
+
+{original_query}"""
+
+
 def fix_incomplete_sql_syntax(sql_query: str) -> str:
     """
     不完全なSQL構文の検出と修正
@@ -10125,10 +10269,60 @@ def generate_optimized_query_with_error_feedback(original_query: str, analysis_r
 8. **権限エラーの回避**: アクセス権限のないテーブルの代替策
 
 【🚨 BROADCASTヒント配置の厳格なルール - エラー修正版】
-- **必ずメインクエリの最初のSELECT文の直後のみ**に配置
-- **サブクエリ内部には絶対に配置しない**
-- **FROM句、JOIN句、WHERE句内には絶対に配置しない**
-- **テーブル名またはエイリアス名を必ず指定**: `/*+ BROADCAST(table_name) */`
+**✅ 正しい配置（必須）:**
+```sql
+-- ✅ 正しい: メインクエリのSELECT直後のみ
+SELECT /*+ BROADCAST(i, d) */
+  ss.ss_item_sk, i.i_brand_id, d.d_year
+FROM store_sales ss
+  JOIN item i ON ss.ss_item_sk = i.i_item_sk
+  JOIN date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+```
+
+**❌ 絶対に禁止される配置（構文エラーの原因）:**
+```sql
+-- ❌ 間違い: JOIN句内への配置（PARSE_SYNTAX_ERROR発生）
+FROM store_sales ss
+  JOIN /*+ BROADCAST(i) */ item i ON ss.ss_item_sk = i.i_item_sk  -- これが構文エラー
+  JOIN /*+ BROADCAST(d) */ date_dim d ON ss.ss_sold_date_sk = d.d_date_sk  -- これも構文エラー
+
+-- ❌ 間違い: サブクエリ内への配置
+SELECT ... FROM (
+  SELECT /*+ BROADCAST(i) */ ...  -- サブクエリ内は無効
+  FROM ...
+)
+
+-- ❌ 間違い: FROM句内への配置
+FROM /*+ BROADCAST(i) */ item i  -- FROM句内は構文エラー
+```
+
+**🔧 PARSE_SYNTAX_ERROR修正の具体的手順:**
+1. **JOIN句内のBROADCASTヒントを全て削除**
+2. **メインクエリの最初のSELECT直後に全てのBROADCASTヒントを統合**
+3. **テーブル名/エイリアス名を正確に指定**
+
+**📝 具体的修正例（PARSE_SYNTAX_ERROR対応）:**
+
+❌ **修正前（エラー発生）:**
+```sql
+SELECT ss.ss_item_sk, i.i_brand_id
+FROM store_sales ss
+  JOIN /*+ BROADCAST(i) */ item i ON ss.ss_item_sk = i.i_item_sk  -- PARSE_SYNTAX_ERROR
+  JOIN /*+ BROADCAST(d) */ date_dim d ON ss.ss_sold_date_sk = d.d_date_sk  -- PARSE_SYNTAX_ERROR
+```
+
+✅ **修正後（正常）:**
+```sql
+SELECT /*+ BROADCAST(i, d) */ ss.ss_item_sk, i.i_brand_id
+FROM store_sales ss
+  JOIN item i ON ss.ss_item_sk = i.i_item_sk
+  JOIN date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+```
+
+**🚨 エラー修正の最重要ルール:**
+- **JOIN句内の`/*+ BROADCAST(...) */`は即座に削除**
+- **削除したBROADCAST対象をメインSELECT直後に移動**
+- **複数のBROADCAST対象はカンマ区切りで統合: `/*+ BROADCAST(table1, table2, table3) */`**
 
 【🚨 REPARTITIONヒント配置の厳格なルール - エラー修正版】
 - **サブクエリ内部のSELECT文直後に配置**
@@ -10199,6 +10393,12 @@ def generate_optimized_query_with_error_feedback(original_query: str, analysis_r
             if is_error_response:
                 print(f"❌ LLM エラー修正API呼び出しでエラーが発生: {optimized_result[:200]}...")
                 return f"LLM_ERROR: {optimized_result}"
+        
+        # 🔧 修正後のクエリに対してプログラマティック後処理を適用
+        if isinstance(optimized_result, str) and not optimized_result.startswith("LLM_ERROR:"):
+            print("🔧 エラー修正後のクエリ検証・後処理を実行")
+            final_corrected_query = enhance_error_correction_with_syntax_validation(optimized_result, original_query, error_info)
+            return final_corrected_query
         
         return optimized_result
         

@@ -151,10 +151,32 @@ LLM_CONFIG["anthropic"]["api_key"] = "your-api-key"
 
 ### エラー処理・自動修正
 - **対応エラー**: AMBIGUOUS_REFERENCE, UNRESOLVED_COLUMN, PARSE_SYNTAX_ERROR等
+- **PARSE_SYNTAX_ERROR特別対応**: JOIN句内のBROADCASTヒント配置エラーを自動修正
 - **リトライ機能**: 最大3回の自動修正（設定可能）
 - **ヒント保持**: 修正プロセス中もBROADCAST/REPARTITIONヒントを維持
 - **フォールバック**: 修正失敗時は元クエリで安全に実行
 - **🚨 LLMトークン制限対策**: 大容量データの自動切り詰め機能
+
+#### 🛠️ PARSE_SYNTAX_ERROR自動修正機能
+
+**問題**: JOIN句内のBROADCASTヒント配置による構文エラー
+
+```sql
+❌ エラー発生コード:
+join /*+ BROADCAST(i) */ item i ON ss.ss_item_sk = i.i_item_sk
+-- Syntax error at or near '/*+'. SQLSTATE: 42601
+
+✅ 自動修正後:
+SELECT /*+ BROADCAST(i) */ ...
+FROM store_sales ss
+  JOIN item i ON ss.ss_item_sk = i.i_item_sk
+```
+
+**修正プロセス**:
+1. **LLM修正**: 詳細な修正例とルールによる指導
+2. **プログラマティック修正**: LLM失敗時の強制的な後処理
+3. **検証**: 修正後の構文エラー残存チェック
+4. **フォールバック**: 修正失敗時は元クエリを安全使用
 
 ### 🚨 LLMトークン制限エラーの解決
 
