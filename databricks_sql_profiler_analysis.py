@@ -10292,20 +10292,26 @@ def compare_query_performance(original_explain_cost: str, optimized_explain_cost
         if original_metrics['total_rows'] > 0:
             comparison_result['memory_usage_ratio'] = optimized_metrics['total_rows'] / original_metrics['total_rows']
         
-        # 判定閾値の設定
-        COST_DEGRADATION_THRESHOLD = 1.2  # 20%以上のコスト増加で悪化判定
-        MEMORY_DEGRADATION_THRESHOLD = 1.3  # 30%以上のメモリ増加で悪化判定
-        COST_IMPROVEMENT_THRESHOLD = 0.95  # 5%以上の削減で改善判定
-        MEMORY_IMPROVEMENT_THRESHOLD = 0.95  # 5%以上の削減で改善判定
+        # 判定閾値の設定（安定性向上: マージン導入）
+        COST_DEGRADATION_THRESHOLD = 1.15  # 15%以上のコスト増加で悪化判定（旧: 20%）
+        MEMORY_DEGRADATION_THRESHOLD = 1.25  # 25%以上のメモリ増加で悪化判定（旧: 30%）
+        COST_IMPROVEMENT_THRESHOLD = 0.90  # 10%以上の削減で改善判定（旧: 5%）
+        MEMORY_IMPROVEMENT_THRESHOLD = 0.90  # 10%以上の削減で改善判定（旧: 5%）
+        
+        # 🎯 判定安定化マージン（境界値付近での揺れを防止）
+        STABILITY_MARGIN = 0.03  # ±3%のマージン
         
         # パフォーマンス悪化検出
         degradation_factors = []
         
-        if comparison_result['total_cost_ratio'] > COST_DEGRADATION_THRESHOLD:
-            degradation_factors.append(f"総実行コスト悪化: {comparison_result['total_cost_ratio']:.2f}倍")
+        # 🎯 安定化マージンを考慮した判定（揺れ防止）
+        effective_cost_threshold = COST_DEGRADATION_THRESHOLD + STABILITY_MARGIN
+        if comparison_result['total_cost_ratio'] > effective_cost_threshold:
+                        degradation_factors.append(f"総実行コスト悪化: {comparison_result['total_cost_ratio']:.2f}倍（閾値: {effective_cost_threshold:.2f}）")
             
-        if comparison_result['memory_usage_ratio'] > MEMORY_DEGRADATION_THRESHOLD:
-            degradation_factors.append(f"メモリ使用量悪化: {comparison_result['memory_usage_ratio']:.2f}倍")
+        effective_memory_threshold = MEMORY_DEGRADATION_THRESHOLD + STABILITY_MARGIN
+        if comparison_result['memory_usage_ratio'] > effective_memory_threshold:
+            degradation_factors.append(f"メモリ使用量悪化: {comparison_result['memory_usage_ratio']:.2f}倍（閾値: {effective_memory_threshold:.2f}）")
         
         # JOIN操作数の大幅増加チェック
         if (optimized_metrics['join_operations'] > original_metrics['join_operations'] * 1.5):
