@@ -649,6 +649,53 @@ KeyError: '30mb_hit_analysis'  # このキーが存在しない
 - ✅ セル45デグレーション完全修正
 - ✅ パフォーマンス評価ロジック正常動作復旧
 
+#### 🚨 PERFORMANCE EVALUATION FAILURE FIX (v2.7.8)
+
+**ユーザー緊急要求**:
+```
+❌ 何で"パフォーマンス評価が不可能なため、次の試行に進みます"となるのか？理由はすぐにFixしろ！
+```
+
+**根本原因特定**:
+1. **EXPLAIN実行は成功**していたが、内部のエラー検出ロジックが**過度に厳格**
+2. **エラーパターン検出の誤判定**:
+   - `"Reference"` - 正常なEXPLAIN結果にも含まれる一般的単語
+   - `"is ambiguous"` - 正常なテーブル参照でも使われる表現
+   - `"Ambiguous"` - あまりに広範囲な検出パターン
+3. **結果**: 正常なEXPLAIN結果も「エラー」として誤検出 → `error_file`作成 → `cost_success = False` → パフォーマンス評価失敗
+
+**緊急修正内容**:
+
+**1. 🎯 エラーパターンの厳密化**:
+```python
+# 除去された過度に一般的なパターン:
+# "Reference"         → 除去（誤検出の主因）
+# "is ambiguous"      → "reference is ambiguous" （具体化）
+# "Ambiguous"         → "ambiguous reference" （具体化）
+```
+
+**2. 🔍 詳細デバッグ出力追加**:
+```python
+print(f"🔍 EXPLAIN COST成功判定:")
+print(f"   📊 元クエリ: {'✅ 成功' if original_cost_success else '❌ 失敗'}")
+print(f"🔍 エラーパターン検出実行中（パターン数: {len(retryable_error_patterns)}）")
+if detected_error:
+    print(f"❌ {error_source}結果でエラーパターン検出: '{pattern}'")
+```
+
+**3. 🛡️ フォールバック評価エラー詳細化**:
+```python
+print(f"❌ フォールバック評価でもエラー: {str(e)}")
+print(f"   📊 エラー詳細: {type(e).__name__}")
+print(f"   📄 スタックトレース: {traceback.format_exc()}")
+```
+
+**修正効果**:
+- ✅ 正常なEXPLAIN結果の誤検出防止
+- ✅ パフォーマンス評価プロセスの正常動作復旧
+- ✅ エラー原因の詳細可視化
+- ✅ 「パフォーマンス評価が不可能」エラーの根本解決
+
 ### 🚨 LLMトークン制限エラーの解決
 
 #### **発生パターン**

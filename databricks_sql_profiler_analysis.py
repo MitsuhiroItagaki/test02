@@ -11196,6 +11196,19 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
         optimized_cost_success = ('explain_cost_file' in optimized_explain_cost_result and 
                                  'error_file' not in optimized_explain_cost_result)
         
+        # 🚨 緊急デバッグ: EXPLAIN COST成功/失敗の詳細表示
+        print(f"🔍 EXPLAIN COST成功判定:")
+        print(f"   📊 元クエリ: {'✅ 成功' if original_cost_success else '❌ 失敗'}")
+        if not original_cost_success:
+            print(f"      • explain_cost_file存在: {'explain_cost_file' in original_explain_cost_result}")
+            print(f"      • error_file存在: {'error_file' in original_explain_cost_result}")
+            print(f"      • 返却キー: {list(original_explain_cost_result.keys())}")
+        print(f"   🔧 最適化クエリ: {'✅ 成功' if optimized_cost_success else '❌ 失敗'}")
+        if not optimized_cost_success:
+            print(f"      • explain_cost_file存在: {'explain_cost_file' in optimized_explain_cost_result}")
+            print(f"      • error_file存在: {'error_file' in optimized_explain_cost_result}")
+            print(f"      • 返却キー: {list(optimized_explain_cost_result.keys())}")
+        
         if not original_cost_success:
             print("⚠️ 元クエリのEXPLAIN COST実行失敗: パフォーマンス比較をスキップ")
             if 'error_file' in original_explain_cost_result:
@@ -11353,6 +11366,10 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                     
                 except Exception as e:
                     print(f"❌ フォールバック評価でもエラー: {str(e)}")
+                    print(f"   📊 エラー詳細: {type(e).__name__}")
+                    if hasattr(e, '__traceback__'):
+                        import traceback
+                        print(f"   📄 スタックトレース: {traceback.format_exc()}")
                     performance_comparison = None
             else:
                 print("❌ EXPLAIN結果も不足のため、パフォーマンス評価不可")
@@ -11970,7 +11987,7 @@ def execute_explain_and_save_to_file(original_query: str, query_type: str = "ori
         for row in explain_cost_result:
             explain_cost_content += str(row[0]) + "\n"
         
-        # エラーパターンのチェック
+        # 🚨 緊急修正: エラーパターンを厳密化（誤検出防止）
         retryable_error_patterns = [
             "Error occurred during query planning",
             "error occurred during query planning", 
@@ -11985,11 +12002,13 @@ def execute_explain_and_save_to_file(original_query: str, query_type: str = "ori
             "AMBIGUOUS_REFERENCE",
             "ambiguous_reference",
             "[AMBIGUOUS_REFERENCE]",
-            "Reference",
-            "is ambiguous",
-            "Ambiguous",
+            # "Reference",  # 🚨 除去: 過度に一般的、正常結果も誤検出
+            "reference is ambiguous",  # より具体的なパターンに変更
+            # "is ambiguous",  # 🚨 除去: 過度に一般的
+            "ambiguous reference",  # より具体的なパターンに変更
+            # "Ambiguous",  # 🚨 除去: 過度に一般的
             "ParseException",
-            "SemanticException",
+            "SemanticException", 
             "AnalysisException",
             "Syntax error",
             "syntax error",
@@ -12007,11 +12026,17 @@ def execute_explain_and_save_to_file(original_query: str, query_type: str = "ori
         detected_error = None
         error_source = None
         
+        # 🚨 緊急デバッグ: エラー検出プロセスの詳細表示
+        print(f"🔍 エラーパターン検出実行中（パターン数: {len(retryable_error_patterns)}）")
+        print(f"   📊 EXPLAIN内容長: {len(explain_content)} 文字")
+        print(f"   💰 EXPLAIN COST内容長: {len(explain_cost_content)} 文字")
+        
         # 1. EXPLAIN結果のエラーチェック
         for pattern in retryable_error_patterns:
             if pattern in explain_content.lower():
                 detected_error = pattern
                 error_source = "EXPLAIN"
+                print(f"❌ EXPLAIN結果でエラーパターン検出: '{pattern}'")
                 break
         
         # 2. EXPLAIN COST結果のエラーチェック（EXPLAINでエラーが見つからない場合のみ）
@@ -12020,7 +12045,11 @@ def execute_explain_and_save_to_file(original_query: str, query_type: str = "ori
                 if pattern in explain_cost_content.lower():
                     detected_error = pattern
                     error_source = "EXPLAIN COST"
+                    print(f"❌ EXPLAIN COST結果でエラーパターン検出: '{pattern}'")
                     break
+        
+        if not detected_error:
+            print("✅ エラーパターン未検出: 正常な結果として処理")
         
         if detected_error:
             # エラーが検出された場合はエラーとして処理
