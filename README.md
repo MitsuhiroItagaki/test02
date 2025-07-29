@@ -68,6 +68,7 @@ DATABASE = 'your_database'                          # 使用するデータベ�
 # EXPLAIN機能（推奨）
 EXPLAIN_ENABLED = 'Y'  # EXPLAIN文実行（推奨）- EXPLAIN + EXPLAIN COST の両方を実行・保存
 DEBUG_ENABLED = 'Y'    # デバッグ情報保持（'Y' = 保持, 'N' = 削除）
+                               # 🆕 v2.7.15: 最適化試行中のクエリも全て保存
 
 # 言語設定
 OUTPUT_LANGUAGE = 'ja'  # 'ja' (日本語) または 'en' (英語)
@@ -115,6 +116,7 @@ LLM_CONFIG["anthropic"]["api_key"] = "your-api-key"
 ### 🐛 デバッグファイル（DEBUG_ENABLED='Y'時）
 - `output_optimization_report_YYYYMMDD-HHMMSS_raw.md` - 推敲前レポート（バックアップ）
 - `output_explain_error_*.txt` - EXPLAIN実行エラーログ
+- `debug_trial_*.sql` - **NEW v2.7.15!** 最適化試行中の各クエリ（試行番号・タイプ別に保存）
 
 ## 🔧 実行方法
 
@@ -1195,6 +1197,22 @@ EXPLAIN_ENABLED = 'N'      # EXPLAIN実行をスキップ（必要時のみ）
 - **改善された検出機能**: 87.5%の統計情報検出率を実証
 - **実世界対応**: 30億行超データ、効率的なJOIN順序判定等をサポート
 - **メモリ予測**: スピル確率（HIGH 78%等）の事前予測機能
+
+## 🔄 変更履歴
+
+### v2.7.15 (2025-01-XX) - DEBUG TRIAL QUERY TRACKING  
+- **🐛 最適化試行クエリ追跡**: DEBUG_ENABLED=Y時に全試行クエリを識別可能な形で保存
+- **📋 試行別ファイル保存**: `debug_trial_{試行番号}_{タイプ}_{タイムスタンプ}.sql`形式
+- **🎯 詳細メタデータ**: 各ファイルに試行番号・タイプ・エラー情報・タイムスタンプを記録
+- **🔍 全パス対応**: 反復最適化・単体最適化・エラー修正・再試行の全クエリ生成を追跡
+
+### v2.7.14 (2025-01-XX) - BROADCAST HINT COMPLETE ELIMINATION
+- **🚨 BROADCASTヒント完全除去**: LLMプロンプトから全BROADCAST指示・例・分析を削除
+- **✅ 構文エラー根本解決**: BROADCAST起因のPARSE_SYNTAX_ERRORを完全排除  
+- **🔧 プロンプト最適化**: JOIN戦略はSparkの自動最適化に完全委譲
+- **📋 REPARTITIONヒント保持**: パフォーマンス最適化のREPARTITIONヒントは継続使用
+
+---
 
 ## 📞 サポート
 

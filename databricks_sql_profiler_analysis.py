@@ -87,6 +87,67 @@ EXPLAIN_ENABLED = 'Y'
 # 🐛 デバッグモード設定（DEBUG_ENABLED: 'Y' = 中間ファイル保持, 'N' = 最終ファイルのみ保持）
 DEBUG_ENABLED = 'Y'
 
+
+def save_debug_query_trial(query: str, attempt_num: int, trial_type: str, query_id: str = None, error_info: str = None) -> str:
+    """
+    DEBUG_ENABLED=Y時に最適化試行中のクエリを試行ごとに保存
+    
+    Args:
+        query: 生成されたクエリ
+        attempt_num: 試行番号 (1, 2, 3, ...)
+        trial_type: 試行タイプ ('initial', 'performance_improvement', 'error_correction')
+        query_id: クエリID (optional)
+        error_info: エラー情報 (optional)
+    
+    Returns:
+        保存されたファイルパス（保存されなかった場合は空文字）
+    """
+    debug_enabled = globals().get('DEBUG_ENABLED', 'N')
+    if debug_enabled.upper() != 'Y':
+        return ""
+    
+    try:
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        
+        # クエリIDが指定されていない場合は試行番号から生成
+        if not query_id:
+            query_id = f"trial_{attempt_num}"
+        
+        # ファイル名生成: debug_trial_{attempt_num}_{trial_type}_{timestamp}.sql
+        filename = f"debug_trial_{attempt_num:02d}_{trial_type}_{timestamp}.sql"
+        
+        # メタデータ情報の準備
+        metadata_header = f"""-- 🐛 DEBUG: 最適化試行クエリ (DEBUG_ENABLED=Y)
+-- 📋 試行番号: {attempt_num}
+-- 🎯 試行タイプ: {trial_type}
+-- 🕐 生成時刻: {timestamp}
+-- 🔍 クエリID: {query_id}
+"""
+        
+        # エラー情報がある場合は追加
+        if error_info:
+            metadata_header += f"""-- ⚠️  エラー情報: {error_info[:200]}{'...' if len(error_info) > 200 else ''}
+"""
+        
+        metadata_header += f"""-- 📄 生成ファイル: {filename}
+-- ================================================
+
+"""
+        
+        # ファイル保存
+        full_content = metadata_header + query
+        
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(full_content)
+        
+        print(f"🐛 DEBUG保存完了: {filename} (試行{attempt_num}: {trial_type})")
+        return filename
+        
+    except Exception as e:
+        print(f"⚠️ DEBUG保存エラー: {str(e)}")
+        return ""
+
 # 🧠 構造化抽出設定（STRUCTURED_EXTRACTION_ENABLED: 'Y' = 構造化抽出使用, 'N' = 従来の切り詰め使用）
 # Physical PlanとEXPLAIN COSTの処理方式を制御
 # - 'Y': 重要情報のみを構造化抽出（推奨：高精度・高効率）
@@ -11085,6 +11146,9 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
         if attempt_num == 1:
             print("🤖 初回最適化クエリ生成")
             optimized_query = generate_optimized_query_with_llm(original_query, analysis_result, metrics)
+            # 🐛 DEBUG: 初回試行クエリを保存
+            if isinstance(optimized_query, str) and not optimized_query.startswith("LLM_ERROR:"):
+                save_debug_query_trial(optimized_query, attempt_num, "initial")
         else:
             print(f"🔧 修正版最適化クエリ生成（試行{attempt_num}）")
             # 🚨 修正: パフォーマンス悪化専用関数を使用
@@ -11097,6 +11161,11 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                 degradation_analysis, 
                 previous_attempt.get('optimized_query', '')
             )
+            # 🐛 DEBUG: パフォーマンス改善試行クエリを保存
+            if isinstance(optimized_query, str) and not optimized_query.startswith("LLM_ERROR:"):
+                degradation_cause = degradation_analysis.get('primary_cause', 'パフォーマンス悪化')
+                save_debug_query_trial(optimized_query, attempt_num, "performance_improvement", 
+                                     error_info=f"前回悪化原因: {degradation_cause}")
         
         # LLMエラーチェック
         if isinstance(optimized_query, str) and optimized_query.startswith("LLM_ERROR:"):
@@ -11189,6 +11258,11 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                     error_message,
                     current_query  # 現在のクエリ（ヒント付き）を渡す
                 )
+                
+                # 🐛 DEBUG: エラー修正クエリを保存
+                if isinstance(corrected_query, str) and not corrected_query.startswith("LLM_ERROR:"):
+                    save_debug_query_trial(corrected_query, attempt_num, "error_correction", 
+                                         error_info=f"修正対象エラー: {error_message[:100]}")
                 
                 # LLMエラーチェック
                 if isinstance(corrected_query, str) and corrected_query.startswith("LLM_ERROR:"):
@@ -11601,6 +11675,10 @@ def execute_explain_with_retry_logic(original_query: str, analysis_result: str, 
     print("🤖 ステップ1: 初回最適化クエリ生成")
     optimized_query = generate_optimized_query_with_llm(original_query, analysis_result, metrics)
     
+    # 🐛 DEBUG: 単体最適化クエリを保存（反復最適化以外のパス）
+    if isinstance(optimized_query, str) and not optimized_query.startswith("LLM_ERROR:"):
+        save_debug_query_trial(optimized_query, 1, "single_optimization", query_id="direct_path")
+    
     # LLMエラーチェック（重要）
     if isinstance(optimized_query, str) and optimized_query.startswith("LLM_ERROR:"):
         print("❌ LLM最適化でエラーが発生したため、元のクエリを使用します")
@@ -11844,6 +11922,12 @@ def execute_explain_with_retry_logic(original_query: str, analysis_result: str, 
                 error_message,
                 current_query  # 🚀 初回最適化クエリ（ヒント付き）を渡す
             )
+            
+            # 🐛 DEBUG: 再試行時のエラー修正クエリを保存
+            if isinstance(corrected_query, str) and not corrected_query.startswith("LLM_ERROR:"):
+                save_debug_query_trial(corrected_query, retry_count + 1, "retry_error_correction", 
+                                     query_id=f"retry_{retry_count + 1}", 
+                                     error_info=f"再試行{retry_count + 1}のエラー修正: {error_message[:100]}")
             
             # LLMエラーチェック（エラー修正時）
             if isinstance(corrected_query, str) and corrected_query.startswith("LLM_ERROR:"):
@@ -12435,6 +12519,12 @@ elif original_query_for_explain and original_query_for_explain.strip():
                     error_message,
                     ""  # previous_optimized_queryは空
                 )
+                
+                # 🐛 DEBUG: 元クエリのエラー修正結果を保存
+                if isinstance(corrected_original_query, str) and not corrected_original_query.startswith("LLM_ERROR:"):
+                    save_debug_query_trial(corrected_original_query, 0, "original_query_correction", 
+                                         query_id="original_corrected", 
+                                         error_info=f"元クエリ構文エラー修正: {error_message[:100] if error_message else 'unknown error'}")
                 
                 # 修正結果をチェック
                 if isinstance(corrected_original_query, str) and not corrected_original_query.startswith("LLM_ERROR:"):
