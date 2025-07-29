@@ -8488,7 +8488,7 @@ def generate_performance_comparison_section(performance_comparison: Dict[str, An
     
     return section
 
-def generate_comprehensive_optimization_report(query_id: str, optimized_result: str, metrics: Dict[str, Any], analysis_result: str = "", performance_comparison: Dict[str, Any] = None) -> str:
+def generate_comprehensive_optimization_report(query_id: str, optimized_result: str, metrics: Dict[str, Any], analysis_result: str = "", performance_comparison: Dict[str, Any] = None, best_attempt_number: int = None) -> str:
     """
     包括的な最適化レポートを生成
     EXPLAIN + EXPLAIN COST実行フラグがYの場合は、統計情報も含める
@@ -8527,15 +8527,35 @@ def generate_comprehensive_optimization_report(query_id: str, optimized_result: 
         explain_original_files = glob.glob("output_explain_original_*.txt")
         explain_optimized_files = glob.glob("output_explain_optimized_*.txt")
         
-        # 最適化後を優先、なければオリジナル
-        explain_files = explain_optimized_files if explain_optimized_files else explain_original_files
-        
         # 2. 最新のEXPLAIN COST結果ファイルを検索
         cost_original_files = glob.glob("output_explain_cost_original_*.txt")
         cost_optimized_files = glob.glob("output_explain_cost_optimized_*.txt")
         
-        # 最適化後を優先、なければオリジナル
-        cost_files = cost_optimized_files if cost_optimized_files else cost_original_files
+        # 🎯 ベスト試行番号が指定されている場合、対応するファイルを優先選択
+        if best_attempt_number is not None:
+            print(f"🎯 ベスト試行{best_attempt_number}のファイルを検索中...")
+            
+            # ベスト試行のファイルを検索
+            best_explain_files = [f for f in explain_optimized_files if f"attempt_{best_attempt_number}" in f]
+            best_cost_files = [f for f in cost_optimized_files if f"attempt_{best_attempt_number}" in f]
+            
+            if best_explain_files:
+                print(f"✅ ベスト試行{best_attempt_number}のEXPLAINファイルを発見: {best_explain_files[0]}")
+                explain_files = best_explain_files
+            else:
+                print(f"⚠️ ベスト試行{best_attempt_number}のEXPLAINファイルが見つかりません、最適化後を使用")
+                explain_files = explain_optimized_files if explain_optimized_files else explain_original_files
+            
+            if best_cost_files:
+                print(f"✅ ベスト試行{best_attempt_number}のEXPLAIN COSTファイルを発見: {best_cost_files[0]}")
+                cost_files = best_cost_files
+            else:
+                print(f"⚠️ ベスト試行{best_attempt_number}のEXPLAIN COSTファイルが見つかりません、最適化後を使用")
+                cost_files = cost_optimized_files if cost_optimized_files else cost_original_files
+        else:
+            # 従来ロジック: 最適化後を優先、なければオリジナル
+            explain_files = explain_optimized_files if explain_optimized_files else explain_original_files
+            cost_files = cost_optimized_files if cost_optimized_files else cost_original_files
         
         # 📊 EXPLAIN + EXPLAIN COST結果を要約してからレポートに組み込み
         explain_content = ""
@@ -9877,7 +9897,7 @@ def validate_final_sql_syntax(sql_query: str) -> bool:
     
     return True
 
-def save_optimized_sql_files(original_query: str, optimized_result: str, metrics: Dict[str, Any], analysis_result: str = "", llm_response: str = "", performance_comparison: Dict[str, Any] = None) -> Dict[str, str]:
+def save_optimized_sql_files(original_query: str, optimized_result: str, metrics: Dict[str, Any], analysis_result: str = "", llm_response: str = "", performance_comparison: Dict[str, Any] = None, best_attempt_number: int = None) -> Dict[str, str]:
     """
     最適化されたSQLクエリを実行可能な形でファイルに保存
     
@@ -10015,7 +10035,7 @@ def save_optimized_sql_files(original_query: str, optimized_result: str, metrics
         report_data = llm_response if llm_response else optimized_result
     
     initial_report = generate_comprehensive_optimization_report(
-        query_id, report_data, metrics, analysis_result, performance_comparison
+        query_id, report_data, metrics, analysis_result, performance_comparison, best_attempt_number
     )
     
     # LLMでレポートを推敲（詳細な技術情報を保持）
@@ -12605,13 +12625,15 @@ elif original_query_for_explain and original_query_for_explain.strip():
                 
                 # ファイル保存: final_query（成功したクエリ）をSQLファイルに、optimized_result（元のLLMレスポンス）をレポートに使用
                 performance_comparison = retry_result.get('performance_comparison')
+                best_attempt_number = retry_result.get('best_result', {}).get('attempt_num')  # 🎯 ベスト試行番号を取得
                 saved_files = save_optimized_sql_files(
                     original_query_for_explain,
                     final_query,  # 🚀 成功したクエリ（ヒント付き）を保存
                     current_metrics,
                     analysis_result_str,
                     optimized_result,  # 📊 元のLLMレスポンス（レポート用）
-                    performance_comparison  # 🔍 パフォーマンス比較結果
+                    performance_comparison,  # 🔍 パフォーマンス比較結果
+                    best_attempt_number  # 🎯 ベスト試行番号（レポート用）
                 )
                 
                 print("\n📁 最適化ファイル:")
