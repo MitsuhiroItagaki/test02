@@ -12970,9 +12970,24 @@ try:
         
         print(f"📊 元レポートサイズ: {len(original_content):,} 文字")
         
-        # LLMによる推敲を実行
-        print("🤖 LLMによる推敲を実行中...")
-        refined_content = refine_report_content_with_llm(original_content)
+        # 🚨 重複推敲防止: 既に推敲済みかチェック
+        refinement_indicators = [
+            "📊 **最適化レポート**",  # 推敲後の典型的なヘッダー
+            "🚀 **パフォーマンス改善結果**",  # 推敲後の典型的なセクション
+            "✅ **推奨事項**",  # 推敲後のフォーマット
+            "LLMによる推敲を実行中",  # 推敲プロセス中に含まれるメッセージ
+            "推敲版レポート:",  # 推敲済みファイルのメッセージ
+        ]
+        
+        already_refined = any(indicator in original_content for indicator in refinement_indicators)
+        
+        if already_refined:
+            print("✅ レポートは既に推敲済みです（重複処理を回避）")
+            print("📋 推敲済みレポートをそのまま使用します")
+            refined_content = original_content
+        else:
+            print("🤖 LLMによる推敲を実行中...")
+            refined_content = refine_report_content_with_llm(original_content)
         
         if refined_content != original_content:
             print(f"📊 推敲後サイズ: {len(refined_content):,} 文字")
@@ -13013,7 +13028,17 @@ try:
             else:
                 print("❌ 推敲レポートの保存に失敗しました")
         else:
-            print("⚠️ 推敲による変更はありませんでした")
+            print("📋 レポートは既に最適な状態です（推敲処理スキップ）")
+            print("✅ 既存レポートファイルをそのまま使用します")
+            
+            # 既に推敲済みの場合もプレビューを表示
+            print("\n📋 レポート内容のプレビュー:")
+            print("-" * 50)
+            preview = refined_content[:1000]
+            print(preview)
+            if len(refined_content) > 1000:
+                print(f"\n... (残り {len(refined_content) - 1000} 文字は {latest_report} を参照)")
+            print("-" * 50)
             
 except Exception as e:
     print(f"❌ レポート推敲処理中にエラーが発生: {str(e)}")
