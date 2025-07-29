@@ -10117,7 +10117,7 @@ print("✅ 関数定義完了: SQL最適化関連関数（実行プランサイ�
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 🚀 クエリ抽出
+# MAGIC ## 🚀 オリジナルクエリ抽出
 # MAGIC
 # MAGIC このセルでは以下の処理を実行します：
 # MAGIC - プロファイラーデータからオリジナルクエリの抽出
@@ -10212,7 +10212,7 @@ except Exception as e:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 🔍 EXPLAIN文実行とファイル出力
+# MAGIC ## 🔍 SQL最適化実行
 # MAGIC
 # MAGIC このセルでは以下の処理を実行します：
 # MAGIC - セル43で抽出したオリジナルクエリを取得
@@ -12727,6 +12727,16 @@ else:
 print()
 
 
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 📝 レポート成形処理
+# MAGIC
+# MAGIC このセルでは以下の処理を実行します：
+# MAGIC - 最適化レポートファイルの検索と読み込み
+# MAGIC - LLMによるレポート内容の推敲・改善
+# MAGIC - 推敲結果の保存と最終レポート生成
 
 # COMMAND ----------
 # 
