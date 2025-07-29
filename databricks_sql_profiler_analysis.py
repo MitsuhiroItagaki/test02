@@ -12584,7 +12584,7 @@ elif original_query_for_explain and original_query_for_explain.strip():
                         'comparison_error': '🔧'
                     }.get(attempt['status'], '❓')
                     print(f"   {status_icon} 試行{attempt['attempt']}: {attempt['status']}")
-                    if 'cost_ratio' in attempt:
+                    if 'cost_ratio' in attempt and attempt['cost_ratio'] is not None:
                         print(f"      💰 コスト比: {attempt['cost_ratio']:.2f}倍")
             
             if retry_result['final_status'] in ['optimization_success', 'partial_success']:
