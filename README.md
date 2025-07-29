@@ -1016,6 +1016,91 @@ print(f"✅ レポート推敲処理が完了しました: {final_filename}")
 - ✅ デバッグ効率の大幅改善
 - ✅ ユーザー体験の向上（混乱解消）
 
+#### 🚨 BROADCAST HINT COMPLETE ELIMINATION (v2.7.14)
+
+**ユーザー緊急報告**:
+```sql
+SELECT /*+ BROADCAST */ d_date_sk, d_year, d_week_seq, d_moy, d_dom
+FROM date_dim
+WHERE d_year BETWEEN 1998 AND 2002
+```
+**問題**: テーブル名なしの `/*+ BROADCAST */` ヒントがLLMで生成される
+**重大性**: Sparkでは効果がない無効なヒント
+
+**根本原因特定**:
+**LLMプロンプト内にBROADCAST関連指示が大量残存**していました：
+
+**❌ 発見された問題箇所**:
+
+1. **Line 6893-6929: BROADCAST使用強制指示**:
+```python
+- **BROADCAST結合を最優先**: 小さいテーブルとの結合では必ずBROADCAST結合を使用
+- **BROADCAST効果を妨げない**: REPARTITIONは結合前に入れず、BROADCAST結合の効果を最大化
+
+**推奨する処理フロー:**
+```sql
+SELECT /*+ BROADCAST(small_table) */  # ← 問題の指示
+```
+
+2. **Line 6763-6764: BROADCAST分析結果への言及**:
+```python
+【BROADCAST分析結果】
+{chr(10).join(broadcast_summary)}
+```
+
+3. **Line 6808-6812: 統計情報での BROADCAST判定指示**:
+```python
+- **table_stats**: テーブル別詳細統計（テーブル名、サイズ、行数、BROADCAST判定）
+- **broadcast_candidates**: 30MB未満の小テーブル（テーブル名とサイズ）
+```
+
+**緊急修正内容**:
+
+**1. 🚨 プロンプト冒頭でのBROADCAST禁止宣言**:
+```python
+【重要な処理方針】
+- **❌ BROADCASTヒント（/*+ BROADCAST */、/*+ BROADCAST(table) */）は一切使用禁止**
+- **✅ JOIN戦略はSparkの自動最適化に委ねてヒント不使用で最適化**
+```
+
+**2. 🔧 JOIN戦略最適化の書き換え**:
+```python
+# 修正前
+- **BROADCAST結合を最優先**: 小さいテーブルとの結合では必ずBROADCAST結合を使用
+
+# 修正後  
+- **効率的なJOIN順序**: 小さいテーブルから大きいテーブルへの段階的結合
+- **Sparkの自動JOIN戦略**: エンジンの自動判定に委ねることでエラー回避
+```
+
+**3. 📋 分析結果セクションの完全簡略化**:
+```python
+# 修正前（75行の複雑なBROADCAST分析）
+broadcast_summary = [複雑なBROADCAST分析コード...]
+
+# 修正後（1行の簡潔な方針）  
+broadcast_summary = ["🎯 最適化方針: JOIN順序最適化（Sparkの自動戦略を活用、ヒント不使用）"]
+```
+
+**4. ✅ 構文エラー防止の最終確認に追加**:
+```python
+- ✅ **BROADCASTヒントは一切使用されていない（構文エラー防止）**
+- ✅ **Sparkの自動JOIN戦略に委ねてヒント不使用で最適化されている**
+```
+
+**5. 💡 SQLコメント例での明示的禁止**:
+```python
+-- ❌ 禁止: BROADCASTヒント（/*+ BROADCAST */、/*+ BROADCAST(table) */）は一切使用禁止
+-- ✅ 推奨: Sparkの自動JOIN戦略に委ねてヒント不使用で最適化
+```
+
+**修正効果**:
+- ✅ テーブル名なしBROADCASTヒント生成の完全防止
+- ✅ 全てのBROADCAST関連指示の徹底除去
+- ✅ Sparkの自動最適化への完全移行
+- ✅ 構文エラー原因の根本的排除
+- ✅ LLMによる無効ヒント生成の防止
+
 ### 🚨 LLMトークン制限エラーの解決
 
 #### **発生パターン**

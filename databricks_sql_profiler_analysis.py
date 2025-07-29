@@ -6659,81 +6659,8 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
     # Liquid Clustering推奨の簡潔化
     clustering_summary = "、".join(clustering_recommendations[:2]) if clustering_recommendations else "特になし"
     
-    # BROADCAST分析結果のサマリー作成（30MB閾値対応）
-    broadcast_summary = []
-    if broadcast_analysis["is_join_query"]:
-        # 既存のBROADCAST適用状況を最初に表示
-        if broadcast_analysis["already_optimized"]:
-            existing_broadcast_count = len(broadcast_analysis["existing_broadcast_nodes"])
-            broadcast_summary.append(f"✅ 既にBROADCAST JOIN適用済み: {existing_broadcast_count}個のノード")
-            
-            # BROADCASTされているテーブル一覧を表示
-            broadcast_applied_tables = broadcast_analysis.get("broadcast_applied_tables", [])
-            if broadcast_applied_tables:
-                broadcast_summary.append(f"📋 BROADCASTされているテーブル: {', '.join(broadcast_applied_tables)}")
-            
-            # 既存のBROADCASTノードの詳細を表示（最大3個）
-            for i, node in enumerate(broadcast_analysis["existing_broadcast_nodes"][:3]):
-                node_name_short = node["node_name"][:50] + "..." if len(node["node_name"]) > 50 else node["node_name"]
-                broadcast_summary.append(f"  🔹 BROADCAST Node {i+1}: {node_name_short}")
-            
-            # 実行プラン分析からのJOIN戦略情報
-            plan_analysis = broadcast_analysis.get("execution_plan_analysis", {})
-            if plan_analysis.get("unique_join_strategies"):
-                broadcast_summary.append(f"🔍 検出されたJOIN戦略: {', '.join(plan_analysis['unique_join_strategies'])}")
-        else:
-            broadcast_summary.append("🔍 BROADCAST JOIN未適用 - 最適化の機会を検討中")
-        
-        broadcast_summary.append(f"🎯 BROADCAST適用可能性: {broadcast_analysis['feasibility']}")
-        broadcast_summary.append(f"⚖️ Spark閾値: {broadcast_analysis['spark_threshold_mb']:.1f}MB（非圧縮）")
-        
-        # 30MB以下の候補がある場合
-        if broadcast_analysis["30mb_hit_analysis"]["has_30mb_candidates"]:
-            hit_analysis = broadcast_analysis["30mb_hit_analysis"]
-            broadcast_summary.append(f"✅ 30MB閾値ヒット: {hit_analysis['candidate_count']}個のテーブルが条件適合")
-            broadcast_summary.append(f"📊 候補サイズ範囲: {hit_analysis['smallest_table_mb']:.1f}MB - {hit_analysis['largest_candidate_mb']:.1f}MB")
-            
-            if "optimal_candidate" in hit_analysis:
-                optimal = hit_analysis["optimal_candidate"]
-                broadcast_summary.append(f"🏆 最適候補: {optimal['table']} ({optimal['size_mb']:.1f}MB)")
-        else:
-            broadcast_summary.append(f"❌ 30MB閾値ヒットなし: {broadcast_analysis['30mb_hit_analysis']['reason']}")
-        
-        # BROADCAST候補の詳細（最大3個）
-        if broadcast_analysis["broadcast_candidates"]:
-            broadcast_summary.append("📋 BROADCAST候補詳細:")
-            for i, candidate in enumerate(broadcast_analysis["broadcast_candidates"][:3]):
-                confidence_icon = "🔹" if candidate['confidence'] == 'high' else "🔸"
-                # 既にBROADCAST済みかどうかを表示
-                already_broadcasted = candidate.get('is_already_broadcasted', False)
-                status_icon = "✅" if already_broadcasted else "💡"
-                status_text = "既に適用済み" if already_broadcasted else "適用推奨"
-                
-                broadcast_summary.append(
-                    f"  {confidence_icon} {candidate['table']}: 非圧縮{candidate['estimated_uncompressed_mb']:.1f}MB "
-                    f"(圧縮{candidate['estimated_compressed_mb']:.1f}MB, {candidate['file_format']}, "
-                    f"圧縮率{candidate['compression_ratio']:.1f}x) {status_icon} {status_text}"
-                )
-        
-        # 既存のBROADCAST適用状況を考慮した推奨メッセージ
-        if broadcast_analysis["already_optimized"]:
-            if broadcast_analysis["feasibility"] in ["recommended", "all_small"]:
-                broadcast_summary.append("💡 追加最適化: 実行プランは既に最適化済みですが、更なる改善の余地があります")
-            else:
-                broadcast_summary.append("✅ 最適化完了: 実行プランは適切にBROADCAST JOINが適用されています")
-        else:
-            if broadcast_analysis["feasibility"] in ["recommended", "all_small"]:
-                broadcast_summary.append("🚀 最適化推奨: 効率的なJOIN順序により性能改善が期待できます")
-            elif broadcast_analysis["feasibility"] == "not_recommended":
-                                  broadcast_summary.append("⚠️ 最適化注意: テーブルサイズが大きく、慎重なJOIN順序設計が必要です")
-        
-        # 重要な注意事項
-        if broadcast_analysis["reasoning"]:
-            broadcast_summary.append("⚠️ 重要な注意事項:")
-            for reason in broadcast_analysis["reasoning"][:3]:  # 最大3個に拡張
-                broadcast_summary.append(f"  • {reason}")
-    else:
-        broadcast_summary.append("❌ JOINクエリではないため、JOIN順序最適化は適用対象外")
+    # 🚨 JOIN戦略分析の簡略化（BROADCASTヒント無効化）
+    broadcast_summary = ["🎯 最適化方針: JOIN順序最適化（Sparkの自動戦略を活用、ヒント不使用）"]
     
     optimization_prompt = f"""
 あなたはDatabricksのSQLパフォーマンス最適化の専門家です。以下の**詳細なボトルネック分析結果**を基に、**処理速度重視**でSQLクエリを最適化してください。
@@ -6742,6 +6669,8 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
 - 一回の出力で完全なSQLクエリを生成してください
 - 段階的な出力や複数回に分けての出力は禁止です
 - thinking機能で構造理解→一回で完全なSQL出力
+- **❌ BROADCASTヒント（/*+ BROADCAST */、/*+ BROADCAST(table) */）は一切使用禁止**
+- **✅ JOIN戦略はSparkの自動最適化に委ねてヒント不使用で最適化**
 
 【元のSQLクエリ】
 ```sql
@@ -6760,8 +6689,8 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
 【基本的なボトルネック情報】
 {chr(10).join(optimization_context) if optimization_context else "主要なボトルネックは設定なし"}
 
-【BROADCAST分析結果】
-{chr(10).join(broadcast_summary)}
+【JOIN戦略分析結果】
+Sparkの自動JOIN戦略を使用（エラー回避のためヒントは使用せず）
 
 【Liquid Clustering推奨】
 {chr(10).join(clustering_recommendations) if clustering_recommendations else "特別な推奨事項はありません"}
@@ -6805,11 +6734,11 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
 **🧠 構造化統計データの活用指針:**
 上記は構造化抽出された統計情報です。以下の項目を重点的に分析してください：
 
-- **table_stats**: テーブル別詳細統計（テーブル名、サイズ、行数、BROADCAST判定）
-- **critical_stats**: 重要統計値（最大テーブル、総行数、BROADCAST候補）
-- **largest_table**: 最大テーブルの名前とサイズ（BROADCAST判定の基準）
-- **broadcast_candidates**: 30MB未満の小テーブル（テーブル名とサイズ）
-- **table_breakdown**: テーブル名の詳細（最大テーブル名、BROADCAST対象テーブル名）
+- **table_stats**: テーブル別詳細統計（テーブル名、サイズ、行数）
+- **critical_stats**: 重要統計値（最大テーブル、総行数、小テーブル候補）
+- **largest_table**: 最大テーブルの名前とサイズ（JOIN順序の基準）
+- **small_table_candidates**: 小テーブル（テーブル名とサイズ）
+- **table_breakdown**: テーブル名の詳細（最大テーブル名、小テーブル名）
 
 **🎯 テーブル名を使った精密最適化:**
 1. **JOIN順序の最適化:**
@@ -6864,7 +6793,7 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
 
 5. **🎯 JOIN戦略最適化**
    - 小テーブルを先に処理する効率的なJOIN順序
-   - Sparkの自動最適化を活用したJOIN戦略
+   - Sparkの自動最適化を活用したJOIN戦略（ヒント不使用）
    - 中間結果のサイズ最小化
 
 6. **💾 メモリ効率化**
@@ -6880,7 +6809,7 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
 8. **📊 EXPLAIN結果に基づく最適化**（EXPLAIN_ENABLED=Yの場合）
    - **Physical Plan分析に基づく最適化**: 
      - 非効率なスキャン操作の改善
-     - ジョイン順序の最適化
+     - ジョイン順序の最適化（Sparkの自動判定に依存）
      - 不要なシャッフル操作の削除
      - プロジェクションプッシュダウンの適用
    - **Photon未対応関数の最適化**:
@@ -6889,27 +6818,27 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
      - Photon利用率向上のための関数選択
      - コンパイル時最適化の活用
 
-9. **🎯 結合とパーティショニングの最適化順序**（重要な構造的最適化）
-   - **BROADCAST結合を最優先**: 小さいテーブルとの結合では必ずBROADCAST結合を使用
-   - **BROADCAST効果を妨げない**: REPARTITIONは結合前に入れず、BROADCAST結合の効果を最大化
+9. **🎯 JOIN順序とパーティショニングの最適化**（重要な構造的最適化）
+   - **効率的なJOIN順序**: 小さいテーブルから大きいテーブルへの段階的結合
+   - **Sparkの自動JOIN戦略**: エンジンの自動判定に委ねることでエラー回避
    - **結合後のREPARTITION**: 結合後にGROUP BYの効率化のためREPARTITIONヒントを適用
-   - **CTE構造の活用**: 必要に応じてCTEを使ってBROADCAST結合後にREPARTITIONする構造で出力
+   - **CTE構造の活用**: 必要に応じてCTEを使って段階的に処理する構造で出力
    - **スピル回避と並列度**: スピルを回避しつつ、並列度の高い処理ができるよう最適化
    
    **🔄 推奨する処理フロー:**
    ```sql
-   -- ✅ 推奨パターン: BROADCAST結合 → CTE → REPARTITION → GROUP BY
-   WITH broadcast_joined AS (
-     SELECT /*+ BROADCAST(small_table) */
+   -- ✅ 推奨パターン: 効率的JOIN順序 → CTE → REPARTITION → GROUP BY
+   WITH efficient_joined AS (
+     SELECT 
        large_table.columns...,
        small_table.columns...
-     FROM large_table
-       JOIN small_table ON large_table.key = small_table.key
+     FROM small_table  -- 小テーブルを先に配置
+       JOIN large_table ON small_table.key = large_table.key
    ),
    repartitioned_for_groupby AS (
      SELECT /*+ REPARTITION(200, group_key) */
        columns...
-     FROM broadcast_joined
+     FROM efficient_joined
    )
    SELECT 
      group_key,
@@ -6917,15 +6846,6 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
      SUM(amount)
    FROM repartitioned_for_groupby
    GROUP BY group_key
-   ```
-   
-   **❌ 避けるべきパターン:**
-   ```sql
-   -- ❌ 悪い例: REPARTITION → BROADCAST (BROADCAST効果を阻害)
-   SELECT /*+ REPARTITION(200, key), BROADCAST(small_table) */
-     columns...
-   FROM (SELECT /*+ REPARTITION(200, key) */ * FROM large_table) large_table
-     JOIN small_table ON large_table.key = small_table.key
    ```
 
 【🔄 REPARTITIONヒント適用ルール - 構文エラー防止】
@@ -7101,12 +7021,16 @@ FROM table1 cs
 - ✅ NULLリテラルが適切な型でキャストされている
 - ✅ JOIN順序が効率的に最適化されている
 - ✅ スピル回避と並列度向上の両方を考慮した構造になっている
+- ✅ **BROADCASTヒントは一切使用されていない（構文エラー防止）**
+- ✅ **Sparkの自動JOIN戦略に委ねてヒント不使用で最適化されている**
 
 ```sql
 -- 🚨 重要: REPARTITIONヒントはメインクエリのSELECT文の直後に配置
 -- 例: SELECT /*+ REPARTITION(200, column_name) */ column1, column2, ...
 -- 🚨 DISTINCT句保持例: SELECT /*+ REPARTITION(200, column_name) */ DISTINCT cs.ID, cs.column1, ...
 -- 🚨 REPARTITIONヒントの適切な配置: SELECT /*+ REPARTITION(200, join_key) */ column1, column2, ...
+-- ❌ 禁止: BROADCASTヒント（/*+ BROADCAST */、/*+ BROADCAST(table) */）は一切使用禁止
+-- ✅ 推奨: Sparkの自動JOIN戦略に委ねてヒント不使用で最適化
 [完全なSQL - すべてのカラム・CTE・テーブル名を省略なしで記述]
 ```
 
