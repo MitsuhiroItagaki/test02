@@ -9244,7 +9244,7 @@ def refine_report_with_llm(raw_report: str, query_id: str) -> str:
         signature_pattern = r"'signature':\s*'[A-Za-z0-9+/=]{100,}'"
         refined_report = re.sub(signature_pattern, "'signature': '[REMOVED]'", refined_report)
         
-        print("✅ LLMによるレポート推敲完了")
+        print(f"✅ LLMによるレポート推敲完了 (Query ID: {query_id})")
         return refined_report
         
     except Exception as e:
@@ -10039,7 +10039,7 @@ def save_optimized_sql_files(original_query: str, optimized_result: str, metrics
     with open(report_filename, 'w', encoding='utf-8') as f:
         f.write(refined_report)
     
-    print("✅ LLMによるレポート推敲完了")
+    print(f"✅ レポートファイル保存完了: {report_filename}")
     
     # 出力ファイルの結果（独立したTOP10ファイルは削除し、最適化レポートに統合）
     result = {
@@ -12860,7 +12860,7 @@ def refine_report_content_with_llm(report_content: str) -> str:
         if isinstance(refined_content, list):
             refined_content = format_thinking_response(refined_content)
         
-        print("✅ LLMによるレポート推敲完了")
+        print(f"✅ LLMによるレポート推敲完了 (セル46独立処理)")
         return refined_content
         
     except Exception as e:
@@ -12982,11 +12982,11 @@ try:
         already_refined = any(indicator in original_content for indicator in refinement_indicators)
         
         if already_refined:
-            print("✅ レポートは既に推敲済みです（重複処理を回避）")
+            print(f"✅ レポートは既に推敲済みです（重複処理を回避）: {latest_report}")
             print("📋 推敲済みレポートをそのまま使用します")
             refined_content = original_content
         else:
-            print("🤖 LLMによる推敲を実行中...")
+            print(f"🤖 LLMによる推敲を実行中 (対象: {latest_report})...")
             refined_content = refine_report_content_with_llm(original_content)
         
         if refined_content != original_content:
@@ -13015,7 +13015,7 @@ try:
                         final_file_size = os.path.getsize(final_filename)
                         print(f"📁 最終ファイルサイズ: {final_file_size:,} bytes")
                 
-                print("✅ レポート推敲処理が完了しました")
+                print(f"✅ レポート推敲処理が完了しました: {final_filename}")
                 
                 # 推敲の結果を表示（最初の1000文字）
                 print("\n📋 推敲結果のプレビュー:")
