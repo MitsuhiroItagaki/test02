@@ -79,7 +79,7 @@ if len(sys.argv) > 1 and not sys.argv[1].startswith('-'):
     JSON_FILE_PATH = sys.argv[1]
 
 # 🌐 Output language setting (OUTPUT_LANGUAGE: 'ja' = Japanese, 'en' = English)
-OUTPUT_LANGUAGE = 'ja'
+OUTPUT_LANGUAGE = 'en'
 
 # 🔍 EXPLAIN statement execution setting (EXPLAIN_ENABLED: 'Y' = execute, 'N' = do not execute)
 EXPLAIN_ENABLED = 'Y'
