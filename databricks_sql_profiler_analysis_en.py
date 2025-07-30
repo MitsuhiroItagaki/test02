@@ -3982,39 +3982,39 @@ print()
 # - DEBUG_SPILL_ANALYSIS=true: Display detailed basis for specific metrics spill judgment
 # - DEBUG_SKEW_ANALYSIS=true: Display detailed basis for AQE-based skew judgment
 # 
-# 💿 スピルデバッグ表示内容:
-# - ターゲットメトリクス: "Sink - Num bytes spilled to disk due to memory pressure"
-# - 各データソース（detailed_metrics, raw_metrics, key_metrics）での検索結果
-# - メトリクス発見時の値と判定結果
-# - その他のスピル関連メトリクス一覧（参考情報）
+# 💿 Spill debug display content:
+# - Target metric: "Sink - Num bytes spilled to disk due to memory pressure"
+# - Search results in each data source (detailed_metrics, raw_metrics, key_metrics)
+# - Values and judgment results when metrics are found
+# - List of other spill-related metrics (reference information)
 # 
-# 🎯 スキューデバッグ表示内容:
-# - AQEShuffleRead - Number of skewed partitions メトリクス値
-# - AQEベーススキュー検出の判定根拠
-# - 検出されたスキュー数と重要度レベル
-# - 統計ベース判定は非推奨（AQEベース判定を推奨）
+# 🎯 Skew debug display content:
+# - AQEShuffleRead - Number of skewed partitions metric value
+# - Judgment basis for AQE-based skew detection
+# - Number of detected skews and importance level
+# - Statistics-based judgment is deprecated (AQE-based judgment recommended)
 
 import os
 
-# 特定メトリクススピル分析のデバッグ表示を有効にする場合はコメントアウトを解除
+# Uncomment to enable debug display for specific metrics spill analysis
 # os.environ['DEBUG_SPILL_ANALYSIS'] = 'true'
 
-# AQEベーススキュー分析のデバッグ表示を有効にする場合はコメントアウトを解除  
+# Uncomment to enable debug display for AQE-based skew analysis  
 # os.environ['DEBUG_SKEW_ANALYSIS'] = 'true'
 
-print("🐛 デバッグモード設定:")
-print(f"   特定メトリクススピル分析デバッグ: {os.environ.get('DEBUG_SPILL_ANALYSIS', 'false')}")
-print(f"   AQEベーススキュー分析デバッグ: {os.environ.get('DEBUG_SKEW_ANALYSIS', 'false')}")
-print("   ※ 'true'に設定すると判定根拠の詳細情報が表示されます")
+print("🐛 Debug mode configuration:")
+print(f"   Specific metrics spill analysis debug: {os.environ.get('DEBUG_SPILL_ANALYSIS', 'false')}")
+print(f"   AQE-based skew analysis debug: {os.environ.get('DEBUG_SKEW_ANALYSIS', 'false')}")
+print("   ※ Setting to 'true' displays detailed judgment basis information")
 print()
-print("💿 特定メトリクススピル検出基準:")
-print('   🎯 ターゲット: "Sink - Num bytes spilled to disk due to memory pressure"')
-print("   ✅ 判定条件: 値 > 0")
+print("💿 Specific metrics spill detection criteria:")
+print('   🎯 Target: "Sink - Num bytes spilled to disk due to memory pressure"')
+print("   ✅ Judgment condition: Value > 0")
 print()
-print("🎯 AQEベーススキュー検出基準:")
+print("🎯 AQE-based skew detection criteria:")
 print("   📊 AQEShuffleRead - Number of skewed partitions > 0")
-print("   📊 判定条件: メトリクス値 > 0")
-print("   📊 重要度: 検出値に基づく")
+print("   📊 Judgment condition: Metric value > 0")
+print("   📊 Importance: Based on detected value")
 
 # COMMAND ----------
 
@@ -4294,47 +4294,47 @@ def convert_sets_to_lists(obj):
 
 # output_extracted_metrics の生成は除外（不要）
 
-# 🐌 最も時間がかかっている処理TOP10
-print(f"\n🐌 最も時間がかかっている処理TOP10")
+# 🐌 Top 10 Most Time-Consuming Processes
+print(f"\n🐌 Top 10 Most Time-Consuming Processes")
 print("=" * 80)
-print("📊 アイコン説明: ⏱️時間 💾メモリ 🔥🐌並列度 💿スピル ⚖️スキュー")
-print('💿 スピル判定: "Sink - Num bytes spilled to disk due to memory pressure" > 0')
-print("🎯 スキュー判定: 'AQEShuffleRead - Number of skewed partitions' > 0")
+print("📊 Icon explanations: ⏱️Time 💾Memory 🔥🐌Parallelism 💿Spill ⚖️Skew")
+print('💿 Spill judgment: "Sink - Num bytes spilled to disk due to memory pressure" > 0')
+print("🎯 Skew judgment: 'AQEShuffleRead - Number of skewed partitions' > 0")
 
-# ノードを実行時間でソート
+# Sort nodes by execution time
 sorted_nodes = sorted(extracted_metrics['node_metrics'], 
                      key=lambda x: x['key_metrics'].get('durationMs', 0), 
                      reverse=True)
 
-# 最大10個のノードを処理
+# Process maximum 10 nodes
 final_sorted_nodes = sorted_nodes[:10]
 
 if final_sorted_nodes:
-    # 🚨 重要: 正しい全体時間の計算（デグレ防止）
-    # 1. overall_metricsから全体実行時間を取得（wall-clock time）
+    # 🚨 Important: Correct total time calculation (regression prevention)
+    # 1. Get total execution time from overall_metrics (wall-clock time)
     overall_metrics = extracted_metrics.get('overall_metrics', {})
     total_duration = overall_metrics.get('total_time_ms', 0)
     
-    # 🚨 並列実行問題の修正: task_total_time_msを優先使用
+    # 🚨 Fix parallel execution issue: Prioritize task_total_time_ms
     task_total_time_ms = overall_metrics.get('task_total_time_ms', 0)
     
     if task_total_time_ms > 0:
         total_duration = task_total_time_ms
-        print(f"✅ コンソール表示: 並列実行対応 - task_total_time_ms使用: {total_duration:,} ms ({total_duration/3600000:.1f}時間)")
+        print(f"✅ Console display: Parallel execution support - using task_total_time_ms: {total_duration:,} ms ({total_duration/3600000:.1f} hours)")
     elif total_duration <= 0:
-        # execution_time_msを次の優先度で使用
+        # Use execution_time_ms as next priority
         execution_time_ms = overall_metrics.get('execution_time_ms', 0)
         if execution_time_ms > 0:
             total_duration = execution_time_ms
-            print(f"⚠️ コンソール表示: task_total_time_ms利用不可、execution_time_ms使用: {total_duration} ms")
+            print(f"⚠️ Console display: task_total_time_ms unavailable, using execution_time_ms: {total_duration} ms")
         else:
-            # 最終フォールバック
+            # Final fallback
             max_node_time = max([node['key_metrics'].get('durationMs', 0) for node in sorted_nodes], default=1)
             total_duration = int(max_node_time * 1.2)
-            print(f"⚠️ コンソール表示: 最終フォールバック - 推定時間使用: {total_duration} ms")
+            print(f"⚠️ Console display: Final fallback - using estimated time: {total_duration} ms")
     
-    print(f"📊 累積タスク実行時間（並列）: {total_duration:,} ms ({total_duration/3600000:.1f} 時間)")
-    print(f"📈 TOP10合計時間（並列実行）: {sum(node['key_metrics'].get('durationMs', 0) for node in final_sorted_nodes):,} ms")
+    print(f"📊 Cumulative task execution time (parallel): {total_duration:,} ms ({total_duration/3600000:.1f} hours)")
+    print(f"📈 TOP10 total time (parallel execution): {sum(node['key_metrics'].get('durationMs', 0) for node in final_sorted_nodes):,} ms")
 
     print()
     
@@ -4565,18 +4565,18 @@ if final_sorted_nodes:
         skew_icon = "⚖️" if skew_detected else "✅"
         
         print(f"{i+1:2d}. {time_icon}{memory_icon}{parallelism_icon}{spill_icon}{skew_icon} [{severity:8}] {short_name}")
-        print(f"    ⏱️  実行時間: {duration_ms:>8,} ms ({duration_ms/1000:>6.1f} sec) - 累積時間の {time_percentage:>5.1f}%")
-        print(f"    📊 処理行数: {rows_num:>8,} 行")
-        print(f"    💾 ピークメモリ: {memory_mb:>6.1f} MB")
-        # 複数のTasks totalメトリクスを表示
+        print(f"    ⏱️  Execution time: {duration_ms:>8,} ms ({duration_ms/1000:>6.1f} sec) - {time_percentage:>5.1f}% of cumulative time")
+        print(f"    📊 Rows processed: {rows_num:>8,} rows")
+        print(f"    💾 Peak memory: {memory_mb:>6.1f} MB")
+        # Display multiple Tasks total metrics
         parallelism_display = []
         for task_metric in parallelism_data.get('all_tasks_metrics', []):
             parallelism_display.append(f"{task_metric['name']}: {task_metric['value']}")
         
         if parallelism_display:
-            print(f"    🔧 並列度: {' | '.join(parallelism_display)}")
+            print(f"    🔧 Parallelism: {' | '.join(parallelism_display)}")
         else:
-            print(f"    🔧 並列度: {num_tasks:>3d} タスク")
+            print(f"    🔧 Parallelism: {num_tasks:>3d} tasks")
         
         # スキュー判定（AQEスキュー検出とAQEShuffleRead平均パーティションサイズの両方を考慮）
         aqe_shuffle_skew_warning = parallelism_data.get('aqe_shuffle_skew_warning', False)
