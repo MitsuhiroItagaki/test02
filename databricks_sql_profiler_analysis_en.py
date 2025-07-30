@@ -141,11 +141,11 @@ def save_debug_query_trial(query: str, attempt_num: int, trial_type: str, query_
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(full_content)
         
-        print(f"🐛 DEBUG保存完了: {filename} (試行{attempt_num}: {trial_type})")
+        print(f"🐛 DEBUG save completed: {filename} (attempt {attempt_num}: {trial_type})")
         return filename
         
     except Exception as e:
-        print(f"⚠️ DEBUG保存エラー: {str(e)}")
+        print(f"⚠️ DEBUG save error: {str(e)}")
         return ""
 
 # 🧠 構造化抽出設定（STRUCTURED_EXTRACTION_ENABLED: 'Y' = 構造化抽出使用, 'N' = 従来の切り詰め使用）
@@ -228,9 +228,9 @@ def get_message(key: str) -> str:
 # DBFS URI:
 # JSON_FILE_PATH = 'dbfs:/FileStore/shared_uploads/your_username/profiler_log.json'
 
-print("📁 【分析対象ファイル設定完了】")
+print("📁 【Analysis Target File Configuration Completed】")
 print("=" * 50)
-print(f"📄 対象ファイル: {JSON_FILE_PATH}")
+print(f"📄 Target file: {JSON_FILE_PATH}")
 print("=" * 50)
 
 # ⚙️ 基本的な環境設定
@@ -300,35 +300,35 @@ LLM_CONFIG = {
 }
 
 print("🤖 LLM endpoint configuration completed")
-print(f"🤖 LLMプロバイダー: {LLM_CONFIG['provider']}")
+print(f"🤖 LLM Provider: {LLM_CONFIG['provider']}")
 
 if LLM_CONFIG['provider'] == 'databricks':
     print(f"🔗 Databricksエンドポイント: {LLM_CONFIG['databricks']['endpoint_name']}")
     thinking_status = "有効" if LLM_CONFIG['databricks'].get('thinking_enabled', False) else "無効"
     thinking_budget = LLM_CONFIG['databricks'].get('thinking_budget_tokens', 65536)
     max_tokens = LLM_CONFIG['databricks'].get('max_tokens', 131072)
-    print(f"🧠 拡張思考モード: {thinking_status} (予算: {thinking_budget:,} tokens)")
-    print(f"📊 最大トークン数: {max_tokens:,} tokens ({max_tokens//1024}K)")
+    print(f"🧠 Extended thinking mode: {thinking_status} (budget: {thinking_budget:,} tokens)")
+    print(f"📊 Maximum tokens: {max_tokens:,} tokens ({max_tokens//1024}K)")
     if not LLM_CONFIG['databricks'].get('thinking_enabled', False):
-        print("⚡ 高速実行モード: 思考プロセスを省略して迅速な結果生成")
+        print("⚡ Fast execution mode: Skip thinking process for rapid result generation")
 elif LLM_CONFIG['provider'] == 'openai':
-    print(f"🔗 OpenAIモデル: {LLM_CONFIG['openai']['model']}")
+    print(f"🔗 OpenAI model: {LLM_CONFIG['openai']['model']}")
 elif LLM_CONFIG['provider'] == 'azure_openai':
-    print(f"🔗 Azure OpenAIデプロイメント: {LLM_CONFIG['azure_openai']['deployment_name']}")
+    print(f"🔗 Azure OpenAI deployment: {LLM_CONFIG['azure_openai']['deployment_name']}")
 elif LLM_CONFIG['provider'] == 'anthropic':
-    print(f"🔗 Anthropicモデル: {LLM_CONFIG['anthropic']['model']}")
+    print(f"🔗 Anthropic model: {LLM_CONFIG['anthropic']['model']}")
 
 print()
-print("💡 LLMプロバイダー切り替え例:")
-print('   LLM_CONFIG["provider"] = "openai"      # OpenAI GPT-4に切り替え')
-print('   LLM_CONFIG["provider"] = "anthropic"   # Anthropic Claudeに切り替え')
-print('   LLM_CONFIG["provider"] = "azure_openai" # Azure OpenAIに切り替え')
+print("💡 LLM provider switching examples:")
+print('   LLM_CONFIG["provider"] = "openai"      # Switch to OpenAI GPT-4')
+print('   LLM_CONFIG["provider"] = "anthropic"   # Switch to Anthropic Claude')
+print('   LLM_CONFIG["provider"] = "azure_openai" # Switch to Azure OpenAI')
 print()
-print("🧠 Databricks拡張思考モード設定例:")
-print('   LLM_CONFIG["databricks"]["thinking_enabled"] = False  # 拡張思考モード無効（デフォルト・高速実行）')
-print('   LLM_CONFIG["databricks"]["thinking_enabled"] = True   # 拡張思考モード有効（詳細分析時のみ）')
-print('   LLM_CONFIG["databricks"]["thinking_budget_tokens"] = 65536  # 思考用トークン予算(64K)')
-print('   LLM_CONFIG["databricks"]["max_tokens"] = 131072  # 最大トークン数(128K)')
+print("🧠 Databricks extended thinking mode configuration examples:")
+print('   LLM_CONFIG["databricks"]["thinking_enabled"] = False  # Disable extended thinking mode (default, fast execution)')
+print('   LLM_CONFIG["databricks"]["thinking_enabled"] = True   # Enable extended thinking mode (detailed analysis only)')
+print('   LLM_CONFIG["databricks"]["thinking_budget_tokens"] = 65536  # Thinking token budget (64K)')
+print('   LLM_CONFIG["databricks"]["max_tokens"] = 131072  # Maximum tokens (128K)')
 print()
 
 # 必要なライブラリのインポート
@@ -356,7 +356,7 @@ except Exception:
         dbr_version = spark.conf.get('spark.databricks.clusterUsageTags.clusterName', 'Unknown')
         print(f"✅ Databricks Cluster: {dbr_version}")
     except Exception:
-        print("✅ Databricks Environment: 設定情報の取得をスキップしました")
+        print("✅ Databricks Environment: Skipped configuration information retrieval")
 
 # COMMAND ----------
 
@@ -594,10 +594,10 @@ def extract_performance_metrics(profiler_data: Dict[str, Any]) -> Dict[str, Any]
     # データ形式を検出
     data_format = detect_data_format(profiler_data)
     
-    print(f"🔍 検出されたデータ形式: {data_format}")
+    print(f"🔍 Detected data format: {data_format}")
     
     if data_format == 'sql_query_summary':
-        print("📊 Databricks SQLクエリサマリー形式として処理中...")
+        print("📊 Processing as Databricks SQL query summary format...")
         result = extract_performance_metrics_from_query_summary(profiler_data)
         if result:
             # Liquid Clustering分析を追加（制限付き）
@@ -608,7 +608,7 @@ def extract_performance_metrics(profiler_data: Dict[str, Any]) -> Dict[str, Any]
                 result["liquid_clustering_analysis"] = {}
         return result
     elif data_format == 'sql_profiler':
-        print("📊 SQLプロファイラー詳細形式として処理中...")
+        print("📊 Processing as SQL profiler detailed format...")
         # 既存のSQLプロファイラー形式の処理を継続
         pass
     else:
