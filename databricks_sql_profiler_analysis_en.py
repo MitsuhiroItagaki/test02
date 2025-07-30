@@ -5109,7 +5109,7 @@ def extract_table_name_from_scan_node(node: Dict[str, Any]) -> str:
             pass
     
     except Exception as e:
-        print(f"⚠️ テーブル名抽出でエラー: {str(e)}")
+        print(f"⚠️ Error in table name extraction: {str(e)}")
     
     return None
 
@@ -6572,11 +6572,11 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
                     print(f"⚠️ Statistical information truncated to {MAX_STATISTICS_SIZE} characters due to token limit")
                     
             except Exception as e:
-                print(f"⚠️ EXPLAIN COST結果ファイルの読み込みに失敗: {str(e)}")
+                print(f"⚠️ Failed to load EXPLAIN COST result file: {str(e)}")
                 explain_cost_content = ""
         
         if not explain_files and not cost_files:
-            print("⚠️ EXPLAIN・EXPLAIN COST結果ファイルが見つかりません")
+            print("⚠️ EXPLAIN・EXPLAIN COST result files not found")
             # フォールバック: 古いファイル名パターンもチェック
             old_explain_files = glob.glob("output_explain_plan_*.txt")
             if old_explain_files:
@@ -6584,7 +6584,7 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
                 try:
                     with open(latest_explain_file, 'r', encoding='utf-8') as f:
                         explain_content = f.read()
-                        print(f"✅ 古い形式のEXPLAIN結果ファイルを読み込み: {latest_explain_file}")
+                        print(f"✅ Loaded legacy format EXPLAIN result file: {latest_explain_file}")
                         
                     # Physical Plan抽出（旧形式対応）
                     if "== Physical Plan ==" in explain_content:
@@ -6598,9 +6598,9 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
                         photon_start = explain_content.find("== Photon Explanation ==")
                         photon_explanation = explain_content[photon_start:].strip()
                 except Exception as e:
-                    print(f"⚠️ 古い形式EXPLAIN結果ファイルの読み込みに失敗: {str(e)}")
+                    print(f"⚠️ Failed to load legacy format EXPLAIN result file: {str(e)}")
             else:
-                print("⚠️ EXPLAIN結果ファイルが見つかりません")
+                print("⚠️ EXPLAIN result files not found")
     
     # 実行プラン情報の抽出（メトリクスから）
     profiler_data = metrics.get('raw_profiler_data', {})
@@ -7218,18 +7218,18 @@ def generate_top10_time_consuming_processes_report(extracted_metrics: Dict[str, 
         
         if task_total_time_ms > 0:
             total_duration = task_total_time_ms
-            print(f"✅ generate_top10レポート: 並列実行対応 - task_total_time_ms使用: {total_duration:,} ms ({total_duration/3600000:.1f}時間)")
+            print(f"✅ generate_top10 report: Parallel execution support - using task_total_time_ms: {total_duration:,} ms ({total_duration/3600000:.1f} hours)")
         elif total_duration <= 0:
             # execution_time_msを次の優先度で使用
             execution_time_ms = overall_metrics.get('execution_time_ms', 0)
             if execution_time_ms > 0:
                 total_duration = execution_time_ms
-                print(f"⚠️ generate_top10レポート: task_total_time_ms利用不可、execution_time_ms使用: {total_duration} ms")
+                print(f"⚠️ generate_top10 report: task_total_time_ms unavailable, using execution_time_ms: {total_duration} ms")
             else:
                 # 最終フォールバック
                 max_node_time = max([node['key_metrics'].get('durationMs', 0) for node in sorted_nodes], default=1)
                 total_duration = int(max_node_time * 1.2)
-                print(f"⚠️ generate_top10レポート: 最終フォールバック - 推定時間使用: {total_duration} ms")
+                print(f"⚠️ generate_top10 report: Final fallback - using estimated time: {total_duration} ms")
         
         report_lines.append(f"📊 累積タスク実行時間（並列）: {total_duration:,} ms ({total_duration/3600000:.1f} 時間)")
         report_lines.append(f"📈 TOP{limit_nodes}合計時間（並列実行）: {sum(node['key_metrics'].get('durationMs', 0) for node in final_sorted_nodes):,} ms")
@@ -7967,7 +7967,7 @@ def summarize_explain_results_with_llm(explain_content: str, explain_cost_conten
     SUMMARIZATION_THRESHOLD = 200000  # 200KB
     
     if total_size < SUMMARIZATION_THRESHOLD:
-        print(f"📊 EXPLAIN + EXPLAIN COST合計サイズ: {total_size:,} 文字（要約不要）")
+        print(f"📊 EXPLAIN + EXPLAIN COST total size: {total_size:,} characters (no summary needed)")
         return {
             'explain_summary': explain_content,
             'explain_cost_summary': explain_cost_content,
@@ -7976,7 +7976,7 @@ def summarize_explain_results_with_llm(explain_content: str, explain_cost_conten
             'summarized': False
         }
     
-    print(f"📊 EXPLAIN + EXPLAIN COST合計サイズ: {total_size:,} 文字（要約実行）")
+    print(f"📊 EXPLAIN + EXPLAIN COST total size: {total_size:,} characters (summary executed)")
     
     # 要約用プロンプト
     summarization_prompt = f"""
@@ -8095,10 +8095,10 @@ def summarize_explain_results_with_llm(explain_content: str, explain_cost_conten
                 with open(summary_filename, 'w', encoding='utf-8') as f:
                     f.write(summary_content)
                 
-                print(f"📄 要約結果を保存: {summary_filename}")
+                print(f"📄 Saving summary results: {summary_filename}")
                 
             except Exception as save_error:
-                print(f"⚠️ 要約結果の保存に失敗: {str(save_error)}")
+                print(f"⚠️ Failed to save summary results: {str(save_error)}")
         
         return {
             'explain_summary': summary_text,
@@ -8534,7 +8534,7 @@ def generate_comprehensive_optimization_report(query_id: str, optimized_result: 
         latest_sql_filename = optimized_sql_files[0]
     
     if explain_enabled.upper() == 'Y':
-        print("🔍 包括レポート用: EXPLAIN + EXPLAIN COST結果ファイルを検索中...")
+        print("🔍 For comprehensive report: Searching EXPLAIN + EXPLAIN COST result files...")
         
         # 1. 最新のEXPLAIN結果ファイルを検索（新しいファイル名パターン対応）
         explain_original_files = glob.glob("output_explain_original_*.txt")
