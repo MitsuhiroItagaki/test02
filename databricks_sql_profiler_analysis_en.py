@@ -11208,7 +11208,7 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
         current_query = extracted_sql if extracted_sql else original_query
         
         # EXPLAIN実行と構文チェック
-        explain_result = execute_explain_with_retry_logic(current_query, analysis_result, metrics, max_retries=2)
+        explain_result = execute_explain_with_retry_logic(current_query, analysis_result, metrics, max_retries=MAX_RETRIES)
         
         if explain_result['final_status'] != 'success':
             print(f"⚠️ 試行{attempt_num}: EXPLAIN実行失敗")
@@ -11681,7 +11681,7 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
     }
 
 
-def execute_explain_with_retry_logic(original_query: str, analysis_result: str, metrics: Dict[str, Any], max_retries: int = 2) -> Dict[str, Any]:
+def execute_explain_with_retry_logic(original_query: str, analysis_result: str, metrics: Dict[str, Any], max_retries: int = 3) -> Dict[str, Any]:
     """
     EXPLAIN execution and error correction retry logic (syntax errors only)
     Attempts automatic correction up to max_retries times, uses original query on failure
