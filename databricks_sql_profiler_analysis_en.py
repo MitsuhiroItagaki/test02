@@ -4639,7 +4639,7 @@ if final_sorted_nodes:
         else:
             # デバッグ情報：なぜフィルタ率が表示されないかを確認
             if filter_result["has_filter_metrics"]:
-                print(f"    📂 フィルタ率: {filter_result['filter_rate']:.1%} (読み込み: {filter_result['files_read_bytes']/(1024*1024*1024):.2f}GB, プルーン: {filter_result['files_pruned_bytes']/(1024*1024*1024):.2f}GB)")
+                print(f"    📂 Filter rate: {filter_result['filter_rate']:.1%} (read: {filter_result['files_read_bytes']/(1024*1024*1024):.2f}GB, pruned: {filter_result['files_pruned_bytes']/(1024*1024*1024):.2f}GB)")
             else:
                 # メトリクス検索のデバッグ
                 debug_info = []
@@ -4650,9 +4650,9 @@ if final_sorted_nodes:
                         debug_info.append(f"{metric_label}: {metric_info.get('value', 0)}")
                 
                 if debug_info:
-                    print(f"    📂 フィルタ関連メトリクス検出: {', '.join(debug_info[:2])}")
+                    print(f"    📂 Filter-related metrics detected: {', '.join(debug_info[:2])}")
                 # else:
-                #     print(f"    📂 フィルタ率: メトリクス未検出")
+                #     print(f"    📂 Filter rate: metrics not detected")
         
         # スピル詳細情報（シンプル表示）
         spill_display = ""
@@ -4662,7 +4662,7 @@ if final_sorted_nodes:
                 spill_display = f"{spill_mb/1024:.2f} GB"
             else:  # MB単位
                 spill_display = f"{spill_mb:.1f} MB"
-            print(f"    💿 スピル: {spill_display}")
+            print(f"    💿 Spill: {spill_display}")
         
         # Shuffleノードの場合は常にShuffle attributesを表示
         if "shuffle" in short_name.lower():
@@ -4678,18 +4678,18 @@ if final_sorted_nodes:
                     repartition_columns = ", ".join(shuffle_attributes)
                     
                     print(f"    💡 最適化提案: REPARTITION({suggested_partitions}, {repartition_columns})")
-                    print(f"       理由: スピル({spill_display})を改善するため")
-                    print(f"       対象: Shuffle属性全{len(shuffle_attributes)}カラムを完全使用")
+                    print(f"       Reason: To improve spill ({spill_display})")
+                    print(f"       Target: Complete use of all {len(shuffle_attributes)} shuffle attribute columns")
             else:
-                print(f"    🔄 Shuffle属性: 設定なし")
+                print(f"    🔄 Shuffle attributes: Not configured")
         
         # スキャンノードの場合はクラスタリングキーを表示
         if "scan" in short_name.lower():
             cluster_attributes = extract_cluster_attributes(node)
             if cluster_attributes:
-                print(f"    📊 クラスタリングキー: {', '.join(cluster_attributes)}")
+                print(f"    📊 Clustering keys: {', '.join(cluster_attributes)}")
             else:
-                print(f"    📊 クラスタリングキー: 設定なし")
+                print(f"    📊 Clustering keys: Not configured")
 
         
         # Skew details (simplified display)
@@ -4701,13 +4701,13 @@ if final_sorted_nodes:
         print()
         
 else:
-    print("⚠️ ノードメトリクスが見つかりませんでした")
+    print("⚠️ Node metrics not found")
 
 print()
 
 # 🔥 Sparkステージ実行分析
 if extracted_metrics['stage_metrics']:
-    print("\n🔥 Sparkステージ実行分析")
+    print("\n🔥 Spark Stage Execution Analysis")
     print("=" * 60)
     
     stage_metrics = extracted_metrics['stage_metrics']
@@ -4715,13 +4715,13 @@ if extracted_metrics['stage_metrics']:
     completed_stages = len([s for s in stage_metrics if s.get('status') == 'COMPLETE'])
     failed_stages = len([s for s in stage_metrics if s.get('num_failed_tasks', 0) > 0])
     
-    print(f"📊 ステージ概要: 全{total_stages}ステージ (完了:{completed_stages}, 失敗タスクあり:{failed_stages})")
+    print(f"📊 Stage overview: Total {total_stages} stages (completed: {completed_stages}, with failed tasks: {failed_stages})")
     print()
     
     # ステージを実行時間でソート
     sorted_stages = sorted(stage_metrics, key=lambda x: x.get('duration_ms', 0), reverse=True)
     
-    print("⏱️ ステージ実行時間ランキング:")
+    print("⏱️ Stage execution time ranking:")
     print("-" * 60)
     
     for i, stage in enumerate(sorted_stages[:5]):  # TOP5ステージのみ表示
@@ -4757,14 +4757,14 @@ if extracted_metrics['stage_metrics']:
             time_icon = "🟢"
             severity = "LOW"
         
-        print(f"{i+1}. {status_icon}{parallelism_icon}{time_icon} ステージ {stage_id} [{severity:8}]")
+        print(f"{i+1}. {status_icon}{parallelism_icon}{time_icon} Stage {stage_id} [{severity:8}]")
         print(f"   ⏱️ 実行時間: {duration_ms:,} ms ({duration_ms/1000:.1f} sec)")
-        print(f"   🔧 タスク: {complete_tasks}/{num_tasks} 完了 (失敗: {failed_tasks})")
+        print(f"   🔧 Tasks: {complete_tasks}/{num_tasks} completed (failed: {failed_tasks})")
         
         # タスクあたりの平均時間
         if num_tasks > 0:
             avg_task_time = duration_ms / num_tasks
-            print(f"   📊 平均タスク時間: {avg_task_time:.1f} ms")
+            print(f"   📊 Average task time: {avg_task_time:.1f} ms")
         
         # 効率性評価
         if num_tasks > 0:
@@ -4774,12 +4774,12 @@ if extracted_metrics['stage_metrics']:
         print()
     
     if len(sorted_stages) > 5:
-        print(f"... 他 {len(sorted_stages) - 5} ステージ")
+        print(f"... {len(sorted_stages) - 5} other stages")
     
     # 問題のあるステージのハイライト
     problematic_stages = [s for s in stage_metrics if s.get('num_failed_tasks', 0) > 0 or s.get('duration_ms', 0) > 30000]
     if problematic_stages:
-        print("\n🚨 注意が必要なステージ:")
+        print("\n🚨 Stages requiring attention:")
         print("-" * 40)
         for stage in problematic_stages[:3]:
             stage_id = stage.get('stage_id', 'N/A')
@@ -4792,14 +4792,14 @@ if extracted_metrics['stage_metrics']:
             if duration_sec > 30:
                 issues.append(f"長時間実行({duration_sec:.1f}sec)")
             
-            print(f"   ⚠️ ステージ {stage_id}: {', '.join(issues)}")
+            print(f"   ⚠️ Stage {stage_id}: {', '.join(issues)}")
     
     
     print()
 else:
-    print("\n🔥 Sparkステージ実行分析")
+    print("\n🔥 Spark Stage Execution Analysis")
     print("=" * 60)
-    print("⚠️ ステージメトリクスが見つかりませんでした")
+    print("⚠️ Stage metrics not found")
     print()
 
 print()
@@ -4839,21 +4839,21 @@ else:
 extracted_data = liquid_analysis.get('extracted_data', {})
 metadata_summary = extracted_data.get('metadata_summary', {})
 
-print(f"\n📊 抽出データ概要:")
-print(f"   🔍 フィルター条件: {metadata_summary.get('filter_expressions_count', 0)}個")
+print(f"\n📊 Extracted data overview:")
+print(f"   🔍 Filter conditions: {metadata_summary.get('filter_expressions_count', 0)} items")
 print(f"   🔗 JOIN条件: {metadata_summary.get('join_expressions_count', 0)}個")
 print(f"   📊 GROUP BY条件: {metadata_summary.get('groupby_expressions_count', 0)}個")
 print(f"   📈 集約関数: {metadata_summary.get('aggregate_expressions_count', 0)}個")
-print(f"   🏷️ 識別テーブル: {metadata_summary.get('tables_identified', 0)}個")
-print(f"   📂 スキャンノード: {metadata_summary.get('scan_nodes_count', 0)}個")
+print(f"   🏷️ Identified tables: {metadata_summary.get('tables_identified', 0)} items")
+print(f"   📂 Scan nodes: {metadata_summary.get('scan_nodes_count', 0)} items")
 
 # パフォーマンスコンテキストの表示
 performance_context = liquid_analysis.get('performance_context', {})
-print(f"\n⚡ パフォーマンス情報:")
+print(f"\n⚡ Performance information:")
 print(f"   ⏱️ 実行時間: {performance_context.get('total_time_sec', 0):.1f}秒")
-print(f"   💾 データ読み込み: {performance_context.get('read_gb', 0):.2f}GB")
+print(f"   💾 Data read: {performance_context.get('read_gb', 0):.2f}GB")
 print(f"   📊 出力行数: {performance_context.get('rows_produced', 0):,}行")
-print(f"   🎯 フィルタ率: {performance_context.get('data_selectivity', 0):.4f}")
+print(f"   🎯 Filter rate: {performance_context.get('data_selectivity', 0):.4f}")
 
 # Output analysis results to file
 print(f"\n💾 Outputting analysis results to file...")
@@ -4877,11 +4877,11 @@ except Exception as e:
 
 # サマリー情報
 summary = liquid_analysis.get('summary', {})
-print(f"\n📋 分析サマリー:")
+print(f"\n📋 Analysis summary:")
 print(f"   🔬 分析方法: {summary.get('analysis_method', 'Unknown')}")
-print(f"   🤖 LLMプロバイダー: {summary.get('llm_provider', 'Unknown')}")
-print(f"   📊 対象テーブル数: {summary.get('tables_identified', 0)}")
-print(f"   📈 抽出カラム数: フィルター({summary.get('total_filter_columns', 0)}) + JOIN({summary.get('total_join_columns', 0)}) + GROUP BY({summary.get('total_groupby_columns', 0)})")
+print(f"   🤖 LLM provider: {summary.get('llm_provider', 'Unknown')}")
+print(f"   📊 Target table count: {summary.get('tables_identified', 0)}")
+print(f"   📈 Extracted column count: Filter({summary.get('total_filter_columns', 0)}) + JOIN({summary.get('total_join_columns', 0)}) + GROUP BY({summary.get('total_groupby_columns', 0)})")
 
 print()
 
@@ -4891,22 +4891,22 @@ print()
 provider = LLM_CONFIG["provider"]
 if provider == "databricks":
     endpoint_name = LLM_CONFIG["databricks"]["endpoint_name"]
-    print(f"🤖 Databricks Model Serving ({endpoint_name}) によるボトルネック分析を開始します...")
-    print(f"⚠️  Model Servingエンドポイント '{endpoint_name}' が必要です")
+    print(f"🤖 Starting bottleneck analysis with Databricks Model Serving ({endpoint_name})...")
+    print(f"⚠️  Model Serving endpoint '{endpoint_name}' is required")
 elif provider == "openai":
     model = LLM_CONFIG["openai"]["model"]
-    print(f"🤖 OpenAI ({model}) によるボトルネック分析を開始します...")
-    print("⚠️  OpenAI APIキーが必要です")
+    print(f"🤖 Starting bottleneck analysis with OpenAI ({model})...")
+    print("⚠️  OpenAI API key is required")
 elif provider == "azure_openai":
     deployment = LLM_CONFIG["azure_openai"]["deployment_name"]
-    print(f"🤖 Azure OpenAI ({deployment}) によるボトルネック分析を開始します...")
-    print("⚠️  Azure OpenAI APIキーとエンドポイントが必要です")
+    print(f"🤖 Starting bottleneck analysis with Azure OpenAI ({deployment})...")
+    print("⚠️  Azure OpenAI API key and endpoint are required")
 elif provider == "anthropic":
     model = LLM_CONFIG["anthropic"]["model"]
-    print(f"🤖 Anthropic ({model}) によるボトルネック分析を開始します...")
-    print("⚠️  Anthropic APIキーが必要です")
+    print(f"🤖 Starting bottleneck analysis with Anthropic ({model})...")
+    print("⚠️  Anthropic API key is required")
 
-print("📝 分析プロンプトを簡潔化してタイムアウトリスクを軽減しています...")
+print("📝 Simplifying analysis prompt to reduce timeout risk...")
 print()
 
 analysis_result = analyze_bottlenecks_with_llm(extracted_metrics)
@@ -4925,7 +4925,7 @@ analysis_result = analyze_bottlenecks_with_llm(extracted_metrics)
 
 # 📊 分析結果の表示
 print("\n" + "=" * 80)
-print(f"🎯 【{provider.upper()} LLM による SQLボトルネック分析結果】")
+print(f"🎯 【SQL Bottleneck Analysis Results by {provider.upper()} LLM】")
 print("=" * 80)
 print()
 print(analysis_result)
@@ -4966,9 +4966,9 @@ try:
         'anthropic': f"Anthropic ({LLM_CONFIG.get('anthropic', {}).get('model', 'Claude')})"
     }
     provider_display = provider_display_names.get(current_provider, f"{current_provider}（未知のプロバイダー）")
-    print(f"✅ {provider_display}によるボトルネック分析完了")
+    print(f"✅ Bottleneck analysis completed by {provider_display}")
 except Exception as e:
-    print("✅ LLMによるボトルネック分析完了")
+    print("✅ LLM bottleneck analysis completed")
 
 print("✅ Analysis results will be integrated into optimization_report later")
 print()
