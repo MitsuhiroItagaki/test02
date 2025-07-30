@@ -752,8 +752,8 @@ print("✅ Function definition completed: extract_performance_metrics")
 
 def get_meaningful_node_name(node: Dict[str, Any], extracted_metrics: Dict[str, Any]) -> str:
     """
-    より意味のあるノード名を取得する関数
-    汎用的な名前（Whole Stage Codegenなど）を具体的な処理名に変換
+    Function to get more meaningful node names
+    Convert generic names (such as Whole Stage Codegen) to specific process names
     """
     original_name = node.get('name', '')
     node_id = node.get('node_id', node.get('id', ''))
@@ -769,11 +769,11 @@ def get_meaningful_node_name(node: Dict[str, Any], extracted_metrics: Dict[str, 
         if value:
             metadata_info[key] = value
     
-    # 1. 汎用的な名前を具体的な名前に置き換え
+    # 1. Replace generic names with specific names
     if 'whole stage codegen' in original_name.lower():
-        # より具体的な処理名を推測するためのヒューリスティック
+        # Heuristic to infer more specific process names
         
-        # ノードIDベースでの関連性を推測（隣接ID）
+        # Infer relevance based on node ID (adjacent IDs)
         node_id_num = None
         try:
             node_id_num = int(node_id) if node_id else None
@@ -781,7 +781,7 @@ def get_meaningful_node_name(node: Dict[str, Any], extracted_metrics: Dict[str, 
             pass
         
         if node_id_num:
-            # 同じファイル内の近いIDの具体的な処理を探す
+            # Look for specific processes with nearby IDs in the same file
             all_nodes = extracted_metrics.get('node_metrics', [])
             nearby_specific_nodes = []
             
@@ -797,20 +797,20 @@ def get_meaningful_node_name(node: Dict[str, Any], extracted_metrics: Dict[str, 
                 except:
                     continue
             
-            # 最も具体的な処理名を選択
+            # Select the most specific process name
             if nearby_specific_nodes:
                 specific_name = get_most_specific_process_name_from_list(nearby_specific_nodes)
                 if specific_name and specific_name != original_name:
                     return f"{specific_name} (Whole Stage Codegen)"
         
-        # フォールバック: tagからより具体的な情報を抽出
+        # Fallback: Extract more specific information from tag
         if 'CODEGEN' in node_tag:
-            # メタデータから子タグ情報を確認
+            # Check child tag information from metadata
             child_tag = metadata_info.get('CHILD_TAG', '')
             if child_tag and child_tag != 'Child':
                 return f"Whole Stage Codegen ({child_tag})"
     
-    # 2. より具体的なタグ情報をノード名に反映
+    # 2. Reflect more specific tag information in node name
     tag_to_name_mapping = {
         'PHOTON_SHUFFLE_EXCHANGE_SINK_EXEC': 'Photon Shuffle Exchange',
         'PHOTON_GROUPING_AGG_EXEC': 'Photon Grouping Aggregate', 
@@ -829,12 +829,12 @@ def get_meaningful_node_name(node: Dict[str, Any], extracted_metrics: Dict[str, 
     else:
         enhanced_name = original_name
     
-    # 3. メタデータから処理の詳細を追加
+    # 3. Add processing details from metadata
     
-    # データベース・テーブル情報を追加（強化版）
+    # Add database and table information (enhanced version)
     table_name = None
     
-    # 複数のメタデータキーからテーブル名を抽出（フルパス優先）
+    # Extract table name from multiple metadata keys (prioritize full path)
     for key_candidate in ['SCAN_TABLE', 'SCAN_IDENTIFIER', 'TABLE_NAME', 'RELATION', 'SCAN_RELATION']:
         if key_candidate in metadata_info:
             extracted_table = metadata_info[key_candidate]
@@ -846,12 +846,12 @@ def get_meaningful_node_name(node: Dict[str, Any], extracted_metrics: Dict[str, 
                 # schema.table形式の場合もそのまま使用
                 table_name = extracted_table
                 break
-            elif not table_name:  # まだテーブル名が見つかっていない場合のみ設定
+            elif not table_name:  # Set only if table name has not been found yet
                 table_name = extracted_table
     
-    # メタデータからテーブル名を抽出できない場合、ノード名から推測
+    # If table name cannot be extracted from metadata, infer from node name
     if not table_name and ('scan' in enhanced_name.lower() or 'data source' in enhanced_name.lower()):
-        # ノード名からテーブル名を推測
+        # Infer table name from node name
         import re
         
         # "Scan tpcds.tpcds_sf1000_delta_lc.customer" のような形式
@@ -3168,13 +3168,13 @@ def analyze_bottlenecks_with_llm(metrics: Dict[str, Any]) -> str:
     report_lines.append("")
     report_lines.append("| 指標 | 値 | 評価 |")
     report_lines.append("|------|-----|------|")
-    report_lines.append(f"| 実行時間 | {total_time_sec:.1f}秒 | {'✅ 良好' if total_time_sec < 60 else '⚠️ 改善必要'} |")
-    report_lines.append(f"| データ読み込み | {read_gb:.2f}GB | {'✅ 良好' if read_gb < 10 else '⚠️ 大容量'} |")
-    report_lines.append(f"| Photon有効 | {'はい' if photon_enabled else 'いいえ'} | {'✅ 良好' if photon_enabled else '❌ 未有効'} |")
-    report_lines.append(f"| キャッシュ効率 | {cache_hit_ratio:.1f}% | {'✅ 良好' if cache_hit_ratio > 80 else '⚠️ 改善必要'} |")
-    report_lines.append(f"| フィルタ率 | {data_selectivity:.1f}% | {'✅ 良好' if data_selectivity > 50 else '⚠️ フィルタ条件を確認'} |")
-    report_lines.append(f"| シャッフル操作 | {shuffle_count}回 | {'✅ 良好' if shuffle_count < 5 else '⚠️ 多数'} |")
-    report_lines.append(f"| スピル発生 | {'はい' if has_spill else 'いいえ'} | {'❌ 問題あり' if has_spill else '✅ 良好'} |")
+    report_lines.append(f"| Execution Time | {total_time_sec:.1f}s | {'✅ Good' if total_time_sec < 60 else '⚠️ Needs Improvement'} |")
+    report_lines.append(f"| Data Read | {read_gb:.2f}GB | {'✅ Good' if read_gb < 10 else '⚠️ Large Volume'} |")
+    report_lines.append(f"| Photon Enabled | {'Yes' if photon_enabled else 'No'} | {'✅ Good' if photon_enabled else '❌ Not Enabled'} |")
+    report_lines.append(f"| Cache Efficiency | {cache_hit_ratio:.1f}% | {'✅ Good' if cache_hit_ratio > 80 else '⚠️ Needs Improvement'} |")
+    report_lines.append(f"| Filter Rate | {data_selectivity:.1f}% | {'✅ Good' if data_selectivity > 50 else '⚠️ Check Filter Conditions'} |")
+    report_lines.append(f"| Shuffle Operations | {shuffle_count} times | {'✅ Good' if shuffle_count < 5 else '⚠️ Many'} |")
+    report_lines.append(f"| Spill Occurred | {'Yes' if has_spill else 'No'} | {'❌ Problem' if has_spill else '✅ Good'} |")
     
     # スキュー検出の判定
     if has_skew:
@@ -3230,19 +3230,19 @@ def analyze_bottlenecks_with_llm(metrics: Dict[str, Any]) -> str:
         report_lines.append("- **メモリスピル**: ✅ なし")
     report_lines.append("")
     
-    # TOP5処理時間ボトルネック
-    report_lines.append("## 3. TOP5処理時間ボトルネック")
+    # TOP5 Processing Time Bottlenecks
+    report_lines.append("## 3. TOP5 Processing Time Bottlenecks")
     report_lines.append("")
     
     for process in critical_processes:
         severity_icon = "🔴" if process['severity'] == "CRITICAL" else "🟠" if process['severity'] == "HIGH" else "🟡"
         report_lines.append(f"### {process['rank']}. {severity_icon} {process['name']}")
-        report_lines.append(f"   - **実行時間**: {process['duration_sec']:.1f}秒 (全体の{process['percentage']:.1f}%)")
-        report_lines.append(f"   - **重要度**: {process['severity']}")
+        report_lines.append(f"   - **Execution Time**: {process['duration_sec']:.1f}s ({process['percentage']:.1f}% of total)")
+        report_lines.append(f"   - **Severity**: {process['severity']}")
         report_lines.append("")
     
-    # Liquid Clustering推奨事項
-    report_lines.append("## 4. Liquid Clustering推奨事項")
+    # Liquid Clustering Recommendations
+    report_lines.append("## 4. Liquid Clustering Recommendations")
     report_lines.append("")
     
     if identified_tables:
@@ -3570,18 +3570,18 @@ Detailed error: {error_detail}"""
                         
             except requests.exceptions.Timeout:
                 if attempt == max_retries - 1:
-                    timeout_msg = f"""⏰ タイムアウトエラー: Databricksエンドポイントの応答が300秒以内に完了しませんでした。
+                    timeout_msg = f"""⏰ Timeout Error: Databricks endpoint response did not complete within 300 seconds.
 
-🔧 解決策:
-1. LLMエンドポイントの稼働状況を確認
-2. プロンプトサイズを削減
-3. より高性能なモデルを使用
-4. 手動でSQL最適化を実行
+🔧 Solutions:
+1. Check LLM endpoint operational status
+2. Reduce prompt size
+3. Use a higher performance model
+4. Execute SQL optimization manually
 
-💡 推奨アクション:
-- クエリの複雑度を確認
-- Databricks Model Servingエンドポイントのスケールアップ
-- シンプルなクエリでテスト実行"""
+💡 Recommended Actions:
+- Check query complexity
+- Scale up Databricks Model Serving endpoint
+- Test execution with simpler queries"""
                     print(f"❌ {timeout_msg}")
                     return timeout_msg
                 else:
@@ -3621,10 +3621,10 @@ def _call_openai_llm(prompt: str) -> str:
             print("✅ OpenAI analysis completed")
             return analysis_text
         else:
-            return f"OpenAI APIエラー: ステータスコード {response.status_code}\n{response.text}"
+            return f"OpenAI API Error: Status code {response.status_code}\n{response.text}"
             
     except Exception as e:
-        return f"OpenAI API呼び出しエラー: {str(e)}"
+        return f"OpenAI API call error: {str(e)}"
 
 def _call_azure_openai_llm(prompt: str) -> str:
     """Call Azure OpenAI API"""
@@ -3656,10 +3656,10 @@ def _call_azure_openai_llm(prompt: str) -> str:
             print("✅ Azure OpenAI analysis completed")
             return analysis_text
         else:
-            return f"Azure OpenAI APIエラー: ステータスコード {response.status_code}\n{response.text}"
+            return f"Azure OpenAI API Error: Status code {response.status_code}\n{response.text}"
             
     except Exception as e:
-        return f"Azure OpenAI API呼び出しエラー: {str(e)}"
+        return f"Azure OpenAI API call error: {str(e)}"
 
 def _call_anthropic_llm(prompt: str) -> str:
     """Call Anthropic API"""
@@ -3692,10 +3692,10 @@ def _call_anthropic_llm(prompt: str) -> str:
             print("✅ Anthropic analysis completed")
             return analysis_text
         else:
-            return f"Anthropic APIエラー: ステータスコード {response.status_code}\n{response.text}"
+            return f"Anthropic API Error: Status code {response.status_code}\n{response.text}"
             
     except Exception as e:
-        return f"Anthropic API呼び出しエラー: {str(e)}"
+        return f"Anthropic API call error: {str(e)}"
 
 print("✅ Function definition completed: analyze_bottlenecks_with_llm")
 
@@ -4938,10 +4938,10 @@ from datetime import datetime
 
 # 最終的なサマリー
 print("\n" + "🎉" * 20)
-print("🏁 【処理完了サマリー】")
+print("🏁 【Processing Completion Summary】")
 print("🎉" * 20)
-print("✅ SQLプロファイラーJSONファイル読み込み完了")
-print(f"✅ パフォーマンスメトリクス抽出完了")
+print("✅ SQL profiler JSON file loading completed")
+print(f"✅ Performance metrics extraction completed")
 
 # LLMプロバイダー情報の動的表示
 try:
