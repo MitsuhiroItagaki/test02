@@ -2801,14 +2801,14 @@ def generate_liquid_clustering_markdown_report(clustering_analysis: Dict[str, An
 - **スキャンノード数**: {summary.get('scan_nodes_count', 0)}
 
 ---
-*レポート生成時刻: {timestamp}*
+*Report generation time: {timestamp}*
 """
     
     return markdown_content
 
 def generate_liquid_clustering_sql_implementations(clustering_analysis: Dict[str, Any]) -> str:
     """
-    Liquid Clustering実装用のSQL例を生成
+    Generate SQL examples for Liquid Clustering implementation
     """
     from datetime import datetime
     
@@ -4842,25 +4842,25 @@ print(f"   💾 データ読み込み: {performance_context.get('read_gb', 0):.2
 print(f"   📊 出力行数: {performance_context.get('rows_produced', 0):,}行")
 print(f"   🎯 フィルタ率: {performance_context.get('data_selectivity', 0):.4f}")
 
-# 分析結果をファイルに出力
-print(f"\n💾 分析結果をファイルに出力中...")
+# Output analysis results to file
+print(f"\n💾 Outputting analysis results to file...")
 try:
     saved_files = save_liquid_clustering_analysis(liquid_analysis, "/tmp")
     
     if "error" in saved_files:
-        print(f"❌ ファイル出力エラー: {saved_files['error']}")
+        print(f"❌ File output error: {saved_files['error']}")
     else:
-        print(f"✅ ファイル出力完了:")
+        print(f"✅ File output completed:")
         for file_type, file_path in saved_files.items():
             if file_type == "json":
-                print(f"   📄 JSON詳細データ: {file_path}")
+                print(f"   📄 JSON detailed data: {file_path}")
             elif file_type == "markdown":
-                print(f"   📝 Markdownレポート: {file_path}")
+                print(f"   📝 Markdown report: {file_path}")
             elif file_type == "sql":
-                print(f"   🔧 SQL実装例: {file_path}")
+                print(f"   🔧 SQL implementation example: {file_path}")
                 
 except Exception as e:
-    print(f"❌ ファイル出力中にエラーが発生しました: {str(e)}")
+    print(f"❌ Error occurred during file output: {str(e)}")
 
 # サマリー情報
 summary = liquid_analysis.get('summary', {})
@@ -6521,17 +6521,17 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
                         extracted_stats_filename = f"output_explain_cost_statistics_extracted_{timestamp}.json"
                         
                         with open(extracted_stats_filename, 'w', encoding='utf-8') as f:
-                            f.write(f"# 抽出されたEXPLAIN COST統計情報 (生成日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n")
-                            f.write(f"# 抽出サイズ: {len(cost_statistics):,} 文字\n")
-                            f.write(f"# 元ファイル: {latest_cost_file}\n\n")
+                            f.write(f"# Extracted EXPLAIN COST statistical information (Generated date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n")
+                            f.write(f"# Extraction size: {len(cost_statistics):,} characters\n")
+                            f.write(f"# Source file: {latest_cost_file}\n\n")
                             f.write(cost_statistics)
                         
-                        print(f"📄 抽出統計情報を保存: {extracted_stats_filename}")
+                        print(f"📄 Saved extracted statistical information: {extracted_stats_filename}")
                         
                     except Exception as save_error:
-                        print(f"⚠️ 抽出統計情報保存に失敗: {str(save_error)}")
+                        print(f"⚠️ Failed to save extracted statistical information: {str(save_error)}")
                 
-                # 統計情報のサイズ制限（LLMトークン制限対策）
+                # Size limit for statistical information (countermeasure for LLM token limits)
                 MAX_STATISTICS_SIZE = 50000  # 約50KB制限
                 if len(cost_statistics) > MAX_STATISTICS_SIZE:
                     # 🚨 DEBUG_ENABLED='Y'の場合、完全なEXPLAIN COST統計情報をファイル保存
@@ -6543,20 +6543,20 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
                             full_stats_filename = f"output_explain_cost_statistics_full_{timestamp}.txt"
                             
                             with open(full_stats_filename, 'w', encoding='utf-8') as f:
-                                f.write(f"# 完全なEXPLAIN COST統計情報 (生成日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n")
-                                f.write(f"# 元サイズ: {len(cost_statistics):,} 文字\n")
-                                f.write(f"# LLM使用サイズ: {MAX_STATISTICS_SIZE:,} 文字\n\n")
+                                f.write(f"# Complete EXPLAIN COST statistical information (Generated date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n")
+                                f.write(f"# Original size: {len(cost_statistics):,} characters\n")
+                                f.write(f"# LLM usage size: {MAX_STATISTICS_SIZE:,} characters\n\n")
                                 f.write(cost_statistics)
                             
-                            print(f"📄 完全なEXPLAIN COST統計情報を保存: {full_stats_filename}")
+                            print(f"📄 Saved complete EXPLAIN COST statistical information: {full_stats_filename}")
                             
                         except Exception as save_error:
-                            print(f"⚠️ EXPLAIN COST統計情報保存に失敗: {str(save_error)}")
+                            print(f"⚠️ Failed to save EXPLAIN COST statistical information: {str(save_error)}")
                     
                     truncated_statistics = cost_statistics[:MAX_STATISTICS_SIZE]
-                    truncated_statistics += f"\n\n⚠️ 統計情報が大きすぎるため、{MAX_STATISTICS_SIZE}文字に切り詰められました"
+                    truncated_statistics += f"\n\n⚠️ Statistical information was too large, truncated to {MAX_STATISTICS_SIZE} characters"
                     cost_statistics = truncated_statistics
-                    print(f"⚠️ 統計情報をトークン制限のため{MAX_STATISTICS_SIZE}文字に切り詰めました")
+                    print(f"⚠️ Statistical information truncated to {MAX_STATISTICS_SIZE} characters due to token limit")
                     
             except Exception as e:
                 print(f"⚠️ EXPLAIN COST結果ファイルの読み込みに失敗: {str(e)}")
@@ -10009,24 +10009,24 @@ def save_optimized_sql_files(original_query: str, optimized_result: str, metrics
                 f.write("-- 以下は最適化分析の全結果です:\n\n")
                 f.write(f"/*\n{optimized_result_main_content}\n*/")
     except Exception as e:
-        print(f"⚠️ SQLファイル保存中にエラーが発生しました: {str(e)}")
-        # エラー時は基本的なファイルを生成
+        print(f"⚠️ Error occurred during SQL file saving: {str(e)}")
+        # Generate basic file on error
         with open(optimized_filename, 'w', encoding='utf-8') as f:
-            f.write(f"-- ⚠️ SQLファイル保存中にエラーが発生しました: {str(e)}\n")
-            f.write(f"-- 最適化結果:\n{optimized_result_main_content}\n")
+            f.write(f"-- ⚠️ Error occurred during SQL file saving: {str(e)}\n")
+            f.write(f"-- Optimization result:\n{optimized_result_main_content}\n")
     
-    # 分析レポートファイルの保存（LLMで推敲された読みやすいレポート）
+    # Save analysis report file (readable report refined by LLM)
     report_filename = f"output_optimization_report_{timestamp}.md"
     
-    print("🤖 LLMによるレポート推敲を実行中...")
+    print("🤖 Executing LLM report refinement...")
     
-    # 🚀 実際に保存されたSQLファイルの内容を読み込んでレポートに使用
+    # 🚀 Load content of actually saved SQL file and use for report
     try:
         with open(optimized_filename, 'r', encoding='utf-8') as f:
             actual_sql_content = f.read()
         
-        # レポート用に実際のSQLファイル内容を使用（動作保証済み）
-        print(f"✅ レポート生成用にSQLファイル内容を読み込み: {optimized_filename}")
+        # Use actual SQL file content for report (guaranteed to work)
+        print(f"✅ Loaded SQL file content for report generation: {optimized_filename}")
         report_data = actual_sql_content
         
     except Exception as e:
@@ -10044,9 +10044,9 @@ def save_optimized_sql_files(original_query: str, optimized_result: str, metrics
     with open(report_filename, 'w', encoding='utf-8') as f:
         f.write(refined_report)
     
-    print(f"✅ レポートファイル保存完了: {report_filename}")
+    print(f"✅ Report file saving completed: {report_filename}")
     
-    # 出力ファイルの結果（独立したTOP10ファイルは削除し、最適化レポートに統合）
+    # Output file results (independent TOP10 files removed and integrated into optimization report)
     result = {
         'optimized_file': optimized_filename,
         'report_file': report_filename
