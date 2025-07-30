@@ -2389,31 +2389,31 @@ def extract_liquid_clustering_data(profiler_data: Dict[str, Any], metrics: Dict[
         "filter_nodes_count": len(extracted_data["filter_nodes"])
     }
     
-    print(f"✅ データ抽出完了: {extracted_data['metadata_summary']}")
+    print(f"✅ Data extraction completed: {extracted_data['metadata_summary']}")
     
-    # 現在のクラスタリングキー情報の詳細表示
+    # Display detailed current clustering key information
     clustering_info_found = False
     for table_name, table_info in extracted_data["table_info"].items():
         current_keys = table_info.get('current_clustering_keys', [])
         if current_keys:
             if not clustering_info_found:
-                print(f"🔍 現在のクラスタリングキー情報:")
+                print(f"🔍 Current clustering key information:")
                 clustering_info_found = True
-            print(f"  📊 テーブル: {table_name}")
-            print(f"     現在のキー: {', '.join(current_keys)}")
-            print(f"     ノード: {table_info.get('node_name', 'Unknown')}")
+            print(f"  📊 Table: {table_name}")
+            print(f"     Current keys: {', '.join(current_keys)}")
+            print(f"     Node: {table_info.get('node_name', 'Unknown')}")
             print()
     
     if not clustering_info_found:
-        print(f"ℹ️ 現在のクラスタリングキーは検出されませんでした")
+        print(f"ℹ️ No current clustering keys detected")
     
     return extracted_data
 
 def analyze_liquid_clustering_opportunities(profiler_data: Dict[str, Any], metrics: Dict[str, Any]) -> Dict[str, Any]:
     """
-    LLMを使用してLiquid Clusteringの分析と推奨事項を生成
+    Generate Liquid Clustering analysis and recommendations using LLM
     """
-    print(f"🤖 LLMによるLiquid Clustering分析を開始")
+    print(f"🤖 Starting LLM-based Liquid Clustering analysis")
     
     # 基本データの抽出
     extracted_data = extract_liquid_clustering_data(profiler_data, metrics)
@@ -2574,7 +2574,7 @@ OPTIMIZE [テーブル名] FULL;
     try:
         # LLM分析の実行
         provider = LLM_CONFIG["provider"]
-        print(f"🤖 {provider}を使用してLiquid Clustering分析中...")
+        print(f"🤖 Analyzing Liquid Clustering using {provider}...")
         
         if provider == "databricks":
             llm_analysis = _call_databricks_llm(clustering_prompt)
@@ -2585,7 +2585,7 @@ OPTIMIZE [テーブル名] FULL;
         elif provider == "anthropic":
             llm_analysis = _call_anthropic_llm(clustering_prompt)
         else:
-            llm_analysis = f"❌ サポートされていないLLMプロバイダー: {provider}"
+            llm_analysis = f"❌ Unsupported LLM provider: {provider}"
         
         # 分析結果の構造化
         clustering_analysis = {
@@ -2610,11 +2610,11 @@ OPTIMIZE [テーブル名] FULL;
             }
         }
         
-        print("✅ LLM Liquid Clustering分析完了")
+        print("✅ LLM Liquid Clustering analysis completed")
         return clustering_analysis
         
     except Exception as e:
-        error_msg = f"LLM分析エラー: {str(e)}"
+        error_msg = f"LLM analysis error: {str(e)}"
         print(f"❌ {error_msg}")
         
         # フォールバック: 基本的な抽出データのみを返す
@@ -2656,25 +2656,25 @@ def save_liquid_clustering_analysis(clustering_analysis: Dict[str, Any], output_
             json.dump(json_data, f, ensure_ascii=False, indent=2)
         
         file_paths['json'] = json_path
-        print(f"✅ JSON形式の詳細データを保存: {json_path}")
+        print(f"✅ Saved detailed data in JSON format: {json_path}")
         
-        # 2. Markdown形式での分析レポート保存
+        # 2. Save analysis report in Markdown format
         markdown_content = generate_liquid_clustering_markdown_report(clustering_analysis)
         
         with open(markdown_path, 'w', encoding='utf-8') as f:
             f.write(markdown_content)
         
         file_paths['markdown'] = markdown_path
-        print(f"✅ Markdown形式の分析レポートを保存: {markdown_path}")
+        print(f"✅ Saved analysis report in Markdown format: {markdown_path}")
         
-        # 3. SQL実装例ファイルの生成
+        # 3. Generate SQL implementation examples file
         sql_content = generate_liquid_clustering_sql_implementations(clustering_analysis)
         
         with open(sql_path, 'w', encoding='utf-8') as f:
             f.write(sql_content)
         
         file_paths['sql'] = sql_path
-        print(f"✅ SQL実装例を保存: {sql_path}")
+        print(f"✅ Saved SQL implementation examples: {sql_path}")
         
         return file_paths
         
