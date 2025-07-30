@@ -1,60 +1,60 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Databricks SQLプロファイラー分析ツール
+# MAGIC # Databricks SQL Profiler Analysis Tool
 # MAGIC
-# MAGIC このnotebookは、DatabricksのSQLプロファイラーJSONログファイルを読み込み、ボトルネック特定と改善案の提示に必要なメトリクスを抽出して分析を行います。
+# MAGIC This notebook reads Databricks SQL profiler JSON log files and extracts metrics necessary for bottleneck identification and improvement recommendations.
 # MAGIC
-# MAGIC ## 機能概要
+# MAGIC ## Feature Overview
 # MAGIC
-# MAGIC 1. **SQLプロファイラーJSONファイルの読み込み**
-# MAGIC    - Databricksで出力されたプロファイラーログの解析
-# MAGIC    - `graphs`キーに格納された実行プランメトリクスの抽出
+# MAGIC 1. **SQL Profiler JSON File Loading**
+# MAGIC    - Analysis of profiler logs output by Databricks
+# MAGIC    - Extraction of execution plan metrics stored in the `graphs` key
 # MAGIC
-# MAGIC 2. **重要メトリクスの抽出**
-# MAGIC    - クエリ基本情報（ID、ステータス、実行時間など）
-# MAGIC    - 全体パフォーマンス（実行時間、データ量、キャッシュ効率など）
-# MAGIC    - ステージ・ノード詳細メトリクス
-# MAGIC    - ボトルネック指標の計算
+# MAGIC 2. **Key Metrics Extraction**
+# MAGIC    - Query basic information (ID, status, execution time, etc.)
+# MAGIC    - Overall performance (execution time, data volume, cache efficiency, etc.)
+# MAGIC    - Stage and node detailed metrics
+# MAGIC    - Bottleneck indicator calculation
 # MAGIC
-# MAGIC 3. **AI によるボトルネック分析**
-# MAGIC    - 設定可能なLLMエンドポイント (Databricks, OpenAI, Azure OpenAI, Anthropic)
-# MAGIC    - 抽出メトリクスからボトルネック特定
-# MAGIC    - 具体的な改善案の提示
+# MAGIC 3. **AI-powered Bottleneck Analysis**
+# MAGIC    - Configurable LLM endpoints (Databricks, OpenAI, Azure OpenAI, Anthropic)
+# MAGIC    - Bottleneck identification from extracted metrics
+# MAGIC    - Specific improvement recommendations
 # MAGIC
 # MAGIC ---
 # MAGIC
-# MAGIC **事前準備:**
-# MAGIC - LLMエンドポイントの設定（Databricks Model Serving または 外部API）
-# MAGIC - 必要なAPIキーの設定
-# MAGIC - SQLプロファイラーJSONファイルの準備（DBFS または FileStore）
+# MAGIC **Prerequisites:**
+# MAGIC - LLM endpoint configuration (Databricks Model Serving or external API)
+# MAGIC - Required API key setup
+# MAGIC - SQL profiler JSON file preparation (DBFS or FileStore)
 # MAGIC
 # MAGIC ---
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC # 🔧 設定・準備セクション
+# MAGIC # 🔧 Configuration & Setup Section
 # MAGIC
-# MAGIC **このセクションではツールの基本設定を行います**
+# MAGIC **This section performs basic tool configuration**
 # MAGIC
-# MAGIC 📋 **設定内容:**
-# MAGIC - 分析対象ファイルの指定
-# MAGIC - LLMエンドポイントの設定
-# MAGIC - 分析関数の定義
+# MAGIC 📋 **Configuration Contents:**
+# MAGIC - Analysis target file specification
+# MAGIC - LLM endpoint configuration
+# MAGIC - Analysis function definitions
 # MAGIC
-# MAGIC ⚠️ **重要:** メイン処理を実行する前に、このセクションのすべてのセルを実行してください
+# MAGIC ⚠️ **Important:** Execute all cells in this section before running the main processing
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 📁 分析対象ファイル設定
+# MAGIC ## 📁 Analysis Target File Configuration
 # MAGIC
-# MAGIC **最初に、分析対象のSQLプロファイラーJSONファイルを指定してください。**
+# MAGIC **First, specify the SQL profiler JSON file to be analyzed.**
 # MAGIC
-# MAGIC このセルでは以下の設定を行います：
-# MAGIC - 📂 SQLプロファイラーJSONファイルのパス設定
-# MAGIC - 📋 対応するファイルパス形式の例
-# MAGIC - ⚙️ 基本的な環境設定
+# MAGIC This cell performs the following configurations:
+# MAGIC - 📂 SQL profiler JSON file path configuration
+# MAGIC - 📋 Examples of supported file path formats
+# MAGIC - ⚙️ Basic environment configuration
 
 # COMMAND ----------
 
@@ -243,18 +243,18 @@ except ImportError:
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
-print("✅ 基本ライブラリインポート完了")
-print("🚀 次のセルに進んでください")
+print("✅ Basic library import completed")
+print("🚀 Please proceed to the next cell")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 🤖 LLMエンドポイント設定
+# MAGIC ## 🤖 LLM Endpoint Configuration
 # MAGIC
-# MAGIC このセルでは以下の設定を行います：
-# MAGIC - LLMプロバイダーの選択（Databricks/OpenAI/Azure/Anthropic）
-# MAGIC - 各プロバイダーの接続設定
-# MAGIC - 必要なライブラリのインポート
+# MAGIC This cell performs the following configurations:
+# MAGIC - LLM provider selection (Databricks/OpenAI/Azure/Anthropic)
+# MAGIC - Connection settings for each provider
+# MAGIC - Required library imports
 
 # COMMAND ----------
 
@@ -299,7 +299,7 @@ LLM_CONFIG = {
     }
 }
 
-print("🤖 LLMエンドポイント設定完了")
+print("🤖 LLM endpoint configuration completed")
 print(f"🤖 LLMプロバイダー: {LLM_CONFIG['provider']}")
 
 if LLM_CONFIG['provider'] == 'databricks':
@@ -361,12 +361,12 @@ except Exception:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 📂 SQLプロファイラーJSONファイル読み込み関数
+# MAGIC ## 📂 SQL Profiler JSON File Loading Function
 # MAGIC
-# MAGIC このセルでは以下の機能を定義します：
-# MAGIC - SQLプロファイラーJSONファイルの読み込み
-# MAGIC - DBFS/FileStore/ローカルパスの自動判別
-# MAGIC - ファイルサイズとデータ情報の表示
+# MAGIC This cell defines the following functions:
+# MAGIC - SQL profiler JSON file loading
+# MAGIC - Automatic detection of DBFS/FileStore/local paths
+# MAGIC - File size and data information display
 
 # COMMAND ----------
 
@@ -400,19 +400,19 @@ def load_profiler_json(file_path: str) -> Dict[str, Any]:
             with open(file_path, 'r', encoding='utf-8') as file:
                 data = json.load(file)
         
-        print(f"✅ JSONファイルを正常に読み込みました: {file_path}")
+        print(f"✅ Successfully loaded JSON file: {file_path}")
         print(f"📊 データサイズ: {len(str(data)):,} characters")
         return data
     except Exception as e:
-        print(f"❌ ファイル読み込みエラー: {str(e)}")
+        print(f"❌ File loading error: {str(e)}")
         return {}
 
-print("✅ 関数定義完了: load_profiler_json")
+print("✅ Function definition completed: load_profiler_json")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 📊 パフォーマンスメトリクス抽出関数
+# MAGIC ## 📊 Performance Metrics Extraction Function
 # MAGIC
 # MAGIC このセルでは以下の機能を定義します：
 # MAGIC - SQLプロファイラーデータからのメトリクス抽出
@@ -449,10 +449,10 @@ def extract_performance_metrics_from_query_summary(profiler_data: Dict[str, Any]
         metrics_data = query_data.get('metrics', {})
         
         if not metrics_data:
-            print("⚠️ メトリクスデータが見つかりません")
+            print("⚠️ No metrics data found")
             return {}
         
-        print(f"✅ SQLクエリサマリー形式のメトリクスを検出しました")
+        print(f"✅ Detected SQL query summary format metrics")
         print(f"   - 実行時間: {metrics_data.get('totalTimeMs', 0):,} ms")
         print(f"   - 読み込みデータ: {metrics_data.get('readBytes', 0) / 1024 / 1024 / 1024:.2f} GB")
         print(f"   - 処理行数: {metrics_data.get('rowsReadCount', 0):,} 行")
@@ -735,7 +735,7 @@ def extract_performance_metrics(profiler_data: Dict[str, Any]) -> Dict[str, Any]
     
     return metrics
 
-print("✅ 関数定義完了: extract_performance_metrics")
+print("✅ Function definition completed: extract_performance_metrics")
 
 # COMMAND ----------
 
