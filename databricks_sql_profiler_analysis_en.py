@@ -1164,20 +1164,20 @@ def extract_parallelism_metrics(node: Dict[str, Any]) -> Dict[str, Any]:
         "aqe_shuffle_metrics": []
     }
     
-    # 対象となるTasks totalメトリクス名のパターン
+    # Target Tasks total metric name patterns
     tasks_total_patterns = [
         "Tasks total",
         "Sink - Tasks total",
         "Source - Tasks total"
     ]
     
-    # 対象となるAQEShuffleReadメトリクス名のパターン
+    # Target AQEShuffleRead metric name patterns
     aqe_shuffle_patterns = [
         "AQEShuffleRead - Number of partitions",
         "AQEShuffleRead - Partition data size"
     ]
     
-    # 1. detailed_metricsから検索
+    # 1. Search from detailed_metrics
     detailed_metrics = node.get('detailed_metrics', {})
     for metric_key, metric_info in detailed_metrics.items():
         metric_value = metric_info.get('value', 0)
@@ -1299,7 +1299,7 @@ def extract_parallelism_metrics(node: Dict[str, Any]) -> Dict[str, Any]:
                             "value": metric_value
                         })
     
-    # 平均パーティションサイズの計算と警告設定
+    # Calculate average partition size and set warnings
     if parallelism_metrics["aqe_shuffle_partitions"] > 0 and parallelism_metrics["aqe_shuffle_data_size"] > 0:
         avg_partition_size = parallelism_metrics["aqe_shuffle_data_size"] / parallelism_metrics["aqe_shuffle_partitions"]
         parallelism_metrics["aqe_shuffle_avg_partition_size"] = avg_partition_size
@@ -1309,8 +1309,8 @@ def extract_parallelism_metrics(node: Dict[str, Any]) -> Dict[str, Any]:
         if avg_partition_size >= threshold_512mb:
             parallelism_metrics["aqe_shuffle_skew_warning"] = True
         else:
-            # AQEShuffleReadメトリクスが存在し、平均パーティションサイズが512MB未満の場合、
-            # AQEがスキューを検出して対応済みと判定
+            # When AQEShuffleRead metrics exist and average partition size is less than 512MB,
+            # Determine that AQE has detected and handled skew
             parallelism_metrics["aqe_detected_and_handled"] = True
     
     return parallelism_metrics
@@ -1333,7 +1333,7 @@ def calculate_filter_rate(node: Dict[str, Any]) -> Dict[str, Any]:
     files_read_bytes = 0
     debug_info = []
     
-    # 検索対象のメトリクス名（実際のJSONファイルで確認されたパターンを優先）
+    # Target metric names for search (prioritizing patterns confirmed in actual JSON files)
     pruned_metrics = [
         "Size of files pruned",  # 実際に存在することを確認済み
         "Size of files pruned before dynamic pruning",  # 実際に存在することを確認済み
@@ -1745,7 +1745,7 @@ def calculate_bottleneck_indicators(metrics: Dict[str, Any]) -> Dict[str, Any]:
     for node in metrics.get('node_metrics', []):
         node_spill_found = False
         
-        # 1. detailed_metricsから検索
+        # 1. Search from detailed_metrics
         detailed_metrics = node.get('detailed_metrics', {})
         for metric_key, metric_info in detailed_metrics.items():
             metric_value = metric_info.get('value', 0)
