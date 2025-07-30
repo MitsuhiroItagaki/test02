@@ -12048,7 +12048,7 @@ def execute_explain_and_save_to_file(original_query: str, query_type: str = "ori
     import os
     
     if not original_query or not original_query.strip():
-        print("❌ クエリが空です")
+        print("❌ Query is empty")
         return {}
     
     # EXPLAIN_ENABLED設定を確認
@@ -12158,7 +12158,7 @@ def execute_explain_and_save_to_file(original_query: str, query_type: str = "ori
             if pattern in explain_content.lower():
                 detected_error = pattern
                 error_source = "EXPLAIN"
-                print(f"❌ EXPLAIN結果でエラーパターン検出: '{pattern}'")
+                                        print(f"❌ Error pattern detected in EXPLAIN result: '{pattern}'")
                 break
         
         # 2. EXPLAIN COST結果のエラーチェック（EXPLAINでエラーが見つからない場合のみ）
@@ -12167,7 +12167,7 @@ def execute_explain_and_save_to_file(original_query: str, query_type: str = "ori
                 if pattern in explain_cost_content.lower():
                     detected_error = pattern
                     error_source = "EXPLAIN COST"
-                    print(f"❌ EXPLAIN COST結果でエラーパターン検出: '{pattern}'")
+                                            print(f"❌ Error pattern detected in EXPLAIN COST result: '{pattern}'")
                     break
         
         if not detected_error:
@@ -12305,7 +12305,7 @@ def execute_explain_and_save_to_file(original_query: str, query_type: str = "ori
         
     except Exception as e:
         error_message = str(e)
-        print(f"❌ EXPLAIN文またはEXPLAIN COST文の実行に失敗: {error_message}")
+                    print(f"❌ Failed to execute EXPLAIN or EXPLAIN COST statement: {error_message}")
         
         # 真の致命的エラー（リトライ不可能なエラー）のチェック
         truly_fatal_errors = [
@@ -12476,7 +12476,7 @@ elif original_query_for_explain and original_query_for_explain.strip():
         spark_version = spark.version
         print(f"📊 Spark環境: {spark_version}")
     except Exception as e:
-        print(f"❌ Spark環境の確認に失敗: {str(e)}")
+        print(f"❌ Failed to check Spark environment: {str(e)}")
         print("   Databricks環境で実行してください")
         spark = None
     
@@ -12695,7 +12695,7 @@ elif original_query_for_explain and original_query_for_explain.strip():
                     print(f"      エラー: {attempt['error_message'][:100]}...")
                     
         except Exception as e:
-            print(f"❌ 統合処理中にエラーが発生: {str(e)}")
+            print(f"❌ Error occurred during integrated processing: {str(e)}")
             print("🚨 緊急エラーの詳細:")
             import traceback
             traceback.print_exc()
@@ -12787,7 +12787,7 @@ def refine_report_content_with_llm(report_content: str) -> str:
     
     # LLMプロバイダーの設定確認
     if not LLM_CONFIG or not LLM_CONFIG.get('provider'):
-        print("❌ LLMプロバイダーが設定されていません")
+        print("❌ LLM provider is not configured")
         return report_content
     
     # 🚨 トークン制限対策: レポートサイズ制限
@@ -12873,7 +12873,7 @@ def refine_report_content_with_llm(report_content: str) -> str:
         elif provider == 'anthropic':
             refined_content = _call_anthropic_llm(refinement_prompt)
         else:
-            print(f"❌ 未対応のLLMプロバイダー: {provider}")
+            print(f"❌ Unsupported LLM provider: {provider}")
             return report_content
         
         # 🚨 LLMエラーレスポンスの検出（精密化）
@@ -12898,7 +12898,7 @@ def refine_report_content_with_llm(report_content: str) -> str:
             )
             
             if is_error_response:
-                print(f"❌ LLMレポート推敲でエラー検出: {refined_content[:200]}...")
+                print(f"❌ Error detected in LLM report refinement: {refined_content[:200]}...")
                 print("📄 元のレポートを返します")
                 return report_content
         
