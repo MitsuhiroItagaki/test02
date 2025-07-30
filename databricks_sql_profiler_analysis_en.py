@@ -3719,34 +3719,34 @@ print("=" * 80)
 
 if provider == "databricks":
     endpoint = LLM_CONFIG["databricks"]["endpoint_name"]
-    print(f"🔗 Databricks Model Serving エンドポイント: {endpoint}")
+    print(f"🔗 Databricks Model Serving endpoint: {endpoint}")
     print("⚠️  Model Serving endpoint must be operational")
 elif provider == "openai":
     model = LLM_CONFIG["openai"]["model"]
-    print(f"🔗 OpenAI モデル: {model}")
+    print(f"🔗 OpenAI model: {model}")
     print("⚠️  OpenAI API key is required")
 elif provider == "azure_openai":
     deployment = LLM_CONFIG["azure_openai"]["deployment_name"]
-    print(f"🤖 Azure OpenAI ({deployment}) によるボトルネック分析を開始します...")
-    print("⚠️  Azure OpenAI APIキーとエンドポイントが必要です")
+    print(f"🤖 Starting Azure OpenAI ({deployment}) bottleneck analysis...")
+    print("⚠️  Azure OpenAI API key and endpoint are required")
 elif provider == "anthropic":
     model = LLM_CONFIG["anthropic"]["model"]
-    print(f"🤖 Anthropic ({model}) によるボトルネック分析を開始します...")
-    print("⚠️  Anthropic APIキーが必要です")
+    print(f"🤖 Starting Anthropic ({model}) bottleneck analysis...")
+    print("⚠️  Anthropic API key is required")
 
-print("📝 分析プロンプトを簡潔化してタイムアウトリスクを軽減しています...")
+print("📝 Simplifying analysis prompts to reduce timeout risk...")
 print()
 
-# extracted_metrics変数が定義されているかチェック
+# Check if extracted_metrics variable is defined
 try:
     extracted_metrics
     print("✅ extracted_metrics variable confirmed")
     analysis_result = analyze_bottlenecks_with_llm(extracted_metrics)
 except NameError:
-    print("❌ extracted_metrics変数が定義されていません")
-    print("⚠️ セル12 (パフォーマンスメトリクス抽出) を先に実行してください")
-    print("📋 正しい実行順序: セル11 → セル12 → セル15")
-    print("🔄 デフォルトの分析結果を設定します")
+    print("❌ extracted_metrics variable is not defined")
+    print("⚠️ Please run Cell 12 (Performance metrics extraction) first")
+    print("📋 Correct execution order: Cell 11 → Cell 12 → Cell 15")
+    print("🔄 Setting default analysis results")
     analysis_result = """
 🤖 LLMボトルネック分析結果
 
@@ -3760,8 +3760,8 @@ except NameError:
 ⚠️ 先にメトリクス抽出を完了してから分析を実行してください。
 """
 except Exception as e:
-    print(f"❌ LLM分析中にエラーが発生しました: {str(e)}")
-    analysis_result = f"LLM分析エラー: {str(e)}"
+    print(f"❌ Error occurred during LLM analysis: {str(e)}")
+    analysis_result = f"LLM analysis error: {str(e)}"
 
 # COMMAND ----------
 
@@ -3793,37 +3793,37 @@ except Exception as e:
 # COMMAND ----------
 
 print("=" * 80)
-print("🚀 Databricks SQLプロファイラー分析ツール")
+print("🚀 Databricks SQL Profiler Analysis Tool")
 print("=" * 80)
-print(f"📁 分析対象ファイル: {JSON_FILE_PATH}")
+print(f"📁 Target analysis file: {JSON_FILE_PATH}")
 print()
 
-# ファイル存在チェック
+# File existence check
 import os
 if not os.path.exists(JSON_FILE_PATH):
-    print("❌ ファイルが見つかりません:")
-    print(f"   指定パス: {JSON_FILE_PATH}")
+    print("❌ File not found:")
+    print(f"   Specified path: {JSON_FILE_PATH}")
     print()
-    print("💡 ファイルパス設定のヒント:")
-    print("   1. セル2でJSON_FILE_PATH変数を正しいパスに設定してください")
-    print("   2. 利用可能なオプション例:")
-    print("      - /Volumes/main/base/mitsuhiro_vol/チューニング前プランファイル.json")
+    print("💡 File path configuration hints:")
+    print("   1. Set the correct path for JSON_FILE_PATH variable in Cell 2")
+    print("   2. Available option examples:")
+    print("      - /Volumes/main/base/mitsuhiro_vol/pre_tuning_plan_file.json")
     print("      - /Volumes/main/base/mitsuhiro_vol/nophoton.json")
     print("      - /Volumes/main/base/mitsuhiro_vol/POC1.json")
-    print("   3. ファイルがDBFS FileStoreにある場合:")
+    print("   3. If file is in DBFS FileStore:")
     print("      - /FileStore/shared_uploads/your_username/filename.json")
-    print("⚠️ 処理を停止します。")
-    raise RuntimeError(f"指定されたファイルが見つかりません: {JSON_FILE_PATH}")
+    print("⚠️ Stopping processing.")
+    raise RuntimeError(f"Specified file not found: {JSON_FILE_PATH}")
 
-# SQLプロファイラーJSONファイルの読み込み
+# Load SQL profiler JSON file
 profiler_data = load_profiler_json(JSON_FILE_PATH)
 if not profiler_data:
-    print("❌ JSONファイルの読み込みに失敗しました。ファイル形式を確認してください。")
-    print("⚠️ 処理を停止します。")
-    # dbutils.notebook.exit("File loading failed")  # 安全のためコメントアウト
-    raise RuntimeError("JSONファイルの読み込みに失敗しました。")
+    print("❌ Failed to load JSON file. Please check the file format.")
+    print("⚠️ Stopping processing.")
+    # dbutils.notebook.exit("File loading failed")  # Commented out for safety
+    raise RuntimeError("Failed to load JSON file.")
 
-print(f"✅ データ読み込み完了")
+print(f"✅ Data loading completed")
 print()
 
 # COMMAND ----------
