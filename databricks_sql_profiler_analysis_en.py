@@ -2495,8 +2495,9 @@ You are a Databricks Liquid Clustering expert. Please analyze the following SQL 
 📊 GROUP BY ({len(extracted_data["groupby_columns"])}個):
 {chr(10).join(groupby_summary)}
 
-📈 集約関数 ({len(extracted_data["aggregate_columns"])}個):
+📈 集約関数 ({len(extracted_data["aggregate_columns"])}個) - ⚠️参考情報のみ（クラスタリングキーには使用禁止）:
 {chr(10).join(aggregate_summary)}
+⚠️ 注意: 上記の集約関数で使用されるカラムはクラスタリングキーの候補から除外してください。
 
 【テーブル情報】
 テーブル数: {len(extracted_data["table_info"])}個
@@ -2513,10 +2514,22 @@ You are a Databricks Liquid Clustering expert. Please analyze the following SQL 
 【分析要求】
 1. 各テーブルに対する最適なLiquid Clusteringカラムの推奨（最大4カラム）
 2. カラム選定の根拠（フィルター、JOIN、GROUP BYでの使用頻度と重要度）
+   🚨 重要: 集約関数（SUM, AVG, COUNT等）の対象カラムはクラスタリングキーに含めない
+   ✅ 有効: フィルター条件、JOIN条件、GROUP BY条件で使用されるカラムのみ
 3. 現在のクラスタリングキーと推奨キーの比較分析
 4. 実装優先順位（パフォーマンス向上効果順）
 5. 具体的なSQL実装例（正しいDatabricks SQL構文、現在のクラスタリングキー情報をコメントに明記）
 6. 期待されるパフォーマンス改善効果（数値で）
+
+【🚨 クラスタリングキー選定の重要な制限事項】
+❌ 禁止: 集約関数のターゲットカラム（例：SUM(sales_amount)のsales_amount）
+❌ 禁止: 計算のみに使用されるカラム（例：AVG(quantity)のquantity）
+✅ 推奨: WHERE句のフィルター条件カラム
+✅ 推奨: JOIN ON句のキーカラム  
+✅ 推奨: GROUP BY句のグルーピングカラム
+✅ 推奨: ORDER BY句のソートキー（範囲検索がある場合）
+
+理由: 集約対象カラムをクラスタリングキーに含めても、ファイルプルーニング効果やJOIN効率の改善が期待できず、クラスタリングの効果を薄める可能性があります。
 
 【制約事項】
 - パーティショニングやZORDERは提案しない（Liquid Clusteringのみ）
