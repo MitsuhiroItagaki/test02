@@ -1675,7 +1675,7 @@ def extract_detailed_bottleneck_analysis(extracted_metrics: Dict[str, Any]) -> D
         detailed_analysis["performance_recommendations"].append({
             "type": "skew_optimization",
             "priority": "HIGH", 
-            "description": f"データスキュー({detailed_analysis['skew_analysis']['total_skewed_partitions']}パーティション)検出: データ分散の見直しが必要"
+            "description": f"Data skew ({detailed_analysis['skew_analysis']['total_skewed_partitions']} partitions) detected: Data distribution review required"
         })
     
     return detailed_analysis
@@ -3178,16 +3178,16 @@ def analyze_bottlenecks_with_llm(metrics: Dict[str, Any]) -> str:
     
     # スキュー検出の判定
     if has_skew:
-        skew_status = "AQEで検出・対応済"
-        skew_evaluation = "🔧 AQE対応済"
+        skew_status = "Detected & handled by AQE"
+        skew_evaluation = "🔧 AQE handled"
     elif has_aqe_shuffle_skew_warning:
-        skew_status = "潜在的なスキューの可能性あり"
-        skew_evaluation = "⚠️ 改善必要"
+        skew_status = "Potential skew possibility"
+        skew_evaluation = "⚠️ Improvement needed"
     else:
-        skew_status = "未検出"
-        skew_evaluation = "✅ 良好"
+        skew_status = "Not detected"
+        skew_evaluation = "✅ Good"
     
-    report_lines.append(f"| スキュー検出 | {skew_status} | {skew_evaluation} |")
+    report_lines.append(f"| Skew Detection | {skew_status} | {skew_evaluation} |")
     report_lines.append("")
     
     # 主要ボトルネック分析
@@ -4453,12 +4453,12 @@ if final_sorted_nodes:
                     })
                     break
         
-        # データスキューの検出（AQEベースの精密判定）
+        # Data skew detection (AQE-based precise judgment)
         skew_detected = False
         skew_details = []
-        skewed_partitions = 0  # スキューパーティション数
+        skewed_partitions = 0  # Number of skewed partitions
         
-        # AQEベーススキュー検出: "AQEShuffleRead - Number of skewed partitions" > 0
+        # AQE-based skew detection: "AQEShuffleRead - Number of skewed partitions" > 0
         target_aqe_metrics = [
             "AQEShuffleRead - Number of skewed partitions",
             "AQEShuffleRead - Number of skewed partition splits"
@@ -4529,19 +4529,19 @@ if final_sorted_nodes:
                     aqe_split_value = key_metric_value
                     aqe_split_metric_name = key_metric_name
         
-        # AQEスキュー判定
+        # AQE skew judgment
         if aqe_skew_value > 0:
             skew_detected = True
-            skewed_partitions = aqe_skew_value  # スキューパーティション数を設定
-            severity_level = "高" if aqe_skew_value >= 5 else "中"
+            skewed_partitions = aqe_skew_value  # Set number of skewed partitions
+            severity_level = "High" if aqe_skew_value >= 5 else "Medium"
             
-            # 基本的なAQEスキュー検出情報
-            description = f'AQEスキュー検出: {aqe_metric_name} = {aqe_skew_value} > 基準値 0 [重要度:{severity_level}]'
+            # Basic AQE skew detection information
+            description = f'AQE skew detected: {aqe_metric_name} = {aqe_skew_value} > threshold 0 [Importance:{severity_level}]'
             
-            # split値も取得できた場合、詳細情報を追加
+            # Add detailed information if split value is also available
             if aqe_split_value > 0:
-                description += f' | AQE検出詳細: Sparkが自動的に{aqe_skew_value}個のスキューパーティションを検出'
-                description += f' | AQE自動対応: Sparkが自動的に{aqe_split_value}個のパーティションに分割'
+                description += f' | AQE detection details: Spark automatically detected {aqe_skew_value} skewed partitions'
+                description += f' | AQE automatic handling: Spark automatically split into {aqe_split_value} partitions'
             
             skew_details.append({
                 'type': 'aqe_skew',
@@ -4554,8 +4554,8 @@ if final_sorted_nodes:
                 'description': description
             })
         
-        # AQEベーススキュー検出のみ使用（スピルベース判定は削除）
-        # 理由: AQEShuffleRead - Number of skewed partitions が正確なスキュー判定基準
+        # Use only AQE-based skew detection (spill-based judgment removed)
+        # Reason: AQEShuffleRead - Number of skewed partitions is the accurate skew judgment standard
         
         # 並列度アイコン
         parallelism_icon = "🔥" if num_tasks >= 10 else "⚠️" if num_tasks >= 5 else "🐌"
@@ -4578,45 +4578,45 @@ if final_sorted_nodes:
         else:
             print(f"    🔧 Parallelism: {num_tasks:>3d} tasks")
         
-        # スキュー判定（AQEスキュー検出とAQEShuffleRead平均パーティションサイズの両方を考慮）
+        # Skew judgment (considering both AQE skew detection and AQEShuffleRead average partition size)
         aqe_shuffle_skew_warning = parallelism_data.get('aqe_shuffle_skew_warning', False)
         
         if skew_detected:
-            skew_status = "AQEで検出・対応済"
+            skew_status = "Detected & handled by AQE"
         elif aqe_shuffle_skew_warning:
-            skew_status = "潜在的なスキューの可能性あり"
+            skew_status = "Potential skew possibility"
         else:
-            skew_status = "なし"
+            skew_status = "None"
         
-        print(f"    💿 スピル: {'あり' if spill_detected else 'なし'} | ⚖️ スキュー: {skew_status}")
+        print(f"    💿 Spill: {'Yes' if spill_detected else 'No'} | ⚖️ Skew: {skew_status}")
         
-        # AQEShuffleReadメトリクスの表示
+        # Display AQEShuffleRead metrics
         aqe_shuffle_metrics = parallelism_data.get('aqe_shuffle_metrics', [])
         if aqe_shuffle_metrics:
             aqe_display = []
             for aqe_metric in aqe_shuffle_metrics:
                 if aqe_metric['name'] == "AQEShuffleRead - Number of partitions":
-                    aqe_display.append(f"パーティション数: {aqe_metric['value']}")
+                    aqe_display.append(f"Partitions: {aqe_metric['value']}")
                 elif aqe_metric['name'] == "AQEShuffleRead - Partition data size":
-                    aqe_display.append(f"データサイズ: {aqe_metric['value']:,} bytes")
+                    aqe_display.append(f"Data size: {aqe_metric['value']:,} bytes")
             
             if aqe_display:
                 print(f"    🔄 AQEShuffleRead: {' | '.join(aqe_display)}")
                 
-                # 平均パーティションサイズと警告表示
+                # Average partition size and warning display
                 avg_partition_size = parallelism_data.get('aqe_shuffle_avg_partition_size', 0)
                 if avg_partition_size > 0:
                     avg_size_mb = avg_partition_size / (1024 * 1024)
-                    print(f"    📊 平均パーティションサイズ: {avg_size_mb:.2f} MB")
+                    print(f"    📊 Average partition size: {avg_size_mb:.2f} MB")
                     
-                    # 512MB以上の場合に警告
+                    # Warning when 512MB or more
                     if parallelism_data.get('aqe_shuffle_skew_warning', False):
-                        print(f"    ⚠️  【警告】 平均パーティションサイズが512MB以上 - 潜在的なスキューの可能性あり")
+                        print(f"    ⚠️  【WARNING】 Average partition size exceeds 512MB - Potential skew possibility")
         
-        # 効率性指標（行/秒）を計算
+        # Calculate efficiency indicator (rows/sec)
         if duration_ms > 0:
             rows_per_sec = (rows_num * 1000) / duration_ms
-            print(f"    🚀 処理効率: {rows_per_sec:>8,.0f} 行/秒")
+            print(f"    🚀 Processing efficiency: {rows_per_sec:>8,.0f} rows/sec")
         
 # フィルタ率表示（デバッグ機能付き）
         filter_result = calculate_filter_rate(node)
@@ -4679,12 +4679,12 @@ if final_sorted_nodes:
                 print(f"    📊 クラスタリングキー: 設定なし")
 
         
-        # スキュー詳細情報（簡略表示）
+        # Skew details (simplified display)
         if skew_detected and skewed_partitions > 0:
-            print(f"    ⚖️ スキュー詳細: {skewed_partitions} 個のスキューパーティション")
+            print(f"    ⚖️ Skew details: {skewed_partitions} skewed partitions")
         
-        # ノードIDも表示
-        print(f"    🆔 ノードID: {node.get('node_id', node.get('id', 'N/A'))}")
+        # Also display Node ID
+        print(f"    🆔 Node ID: {node.get('node_id', node.get('id', 'N/A'))}")
         print()
         
 else:
