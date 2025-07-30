@@ -158,15 +158,15 @@ STRUCTURED_EXTRACTION_ENABLED = 'Y'
 # Number of retries when EXPLAIN execution of LLM-generated optimized queries encounters errors
 # - 1st attempt: EXPLAIN execution with initial generated query
 # - 2nd attempt and beyond: Re-input error information to LLM to generate corrected query and re-execute
-# - 最大試行回数に達した場合: 元の動作可能クエリを使用してファイル生成
+# - When maximum attempts reached: Use original working query for file generation
 MAX_RETRIES = 3
 
-# 🚀 反復的最適化の最大試行回数設定（MAX_OPTIMIZATION_ATTEMPTS: デフォルト3回）
-# パフォーマンス悪化を検出した場合の改善試行回数
-# - 1回目: 初回最適化クエリ生成・パフォーマンス検証
-# - 2回目以降: 悪化原因分析結果に基づく修正版クエリ生成・検証
-# - 最大試行回数に達した場合: 元クエリを使用
-# 注：構文エラーの修正（MAX_RETRIES）とは別のパラメータです
+# 🚀 Iterative optimization maximum attempt count settings (MAX_OPTIMIZATION_ATTEMPTS: default 3 times)
+# Number of improvement attempts when performance degradation is detected
+# - 1st attempt: Initial optimization query generation and performance verification
+# - 2nd attempt and beyond: Corrected query generation and verification based on degradation cause analysis
+# - When maximum attempts reached: Use original query
+# Note: This is a separate parameter from syntax error correction (MAX_RETRIES)
 MAX_OPTIMIZATION_ATTEMPTS = 3
 
 # 🗂️ Catalog and database configuration (used when executing EXPLAIN statements)
@@ -180,19 +180,19 @@ DATABASE = 'tpcds_sf1000_delta_lc'
 # 🌐 Multilingual message dictionary
 MESSAGES = {
     'ja': {
-        'bottleneck_title': 'Databricks SQLプロファイラー ボトルネック分析結果',
-        'query_id': 'クエリID',
-        'analysis_time': '分析日時',
-        'execution_time': '実行時間',
-        'sql_optimization_report': 'SQL最適化レポート',
-        'optimization_time': '最適化日時',
-        'original_file': 'オリジナルファイル',
-        'optimized_file': '最適化ファイル',
-        'optimization_analysis': '最適化分析結果',
-        'performance_metrics': 'パフォーマンスメトリクス参考情報',
-        'read_data': '読み込みデータ',
-        'spill': 'スピル',
-        'top10_processes': '最も時間がかかっている処理TOP10'
+        'bottleneck_title': 'Databricks SQL Profiler Bottleneck Analysis Results',
+        'query_id': 'Query ID',
+        'analysis_time': 'Analysis Date/Time',
+        'execution_time': 'Execution Time',
+        'sql_optimization_report': 'SQL Optimization Report',
+        'optimization_time': 'Optimization Date/Time',
+        'original_file': 'Original File',
+        'optimized_file': 'Optimized File',
+        'optimization_analysis': 'Optimization Analysis Results',
+        'performance_metrics': 'Performance Metrics Reference Information',
+        'read_data': 'Data Read',
+        'spill': 'Spill',
+        'top10_processes': 'TOP10 Most Time-Consuming Processes'
     },
     'en': {
         'bottleneck_title': 'Databricks SQL Profiler Bottleneck Analysis Results',
@@ -431,7 +431,7 @@ def detect_data_format(profiler_data: Dict[str, Any]) -> str:
         if len(profiler_data['graphs']) > 0:
             return 'sql_profiler'
     
-    # SQLクエリサマリー形式の検出（test2.json形式）
+    # SQL query summary format detection (test2.json format)
     if 'query' in profiler_data and 'planMetadatas' in profiler_data:
         query_data = profiler_data.get('query', {})
         if 'metrics' in query_data:
@@ -441,8 +441,8 @@ def detect_data_format(profiler_data: Dict[str, Any]) -> str:
 
 def extract_performance_metrics_from_query_summary(profiler_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Databricks SQLクエリサマリー形式のJSONから基本メトリクスを抽出
-    (test2.json形式に対応)
+    Extract basic metrics from Databricks SQL query summary format JSON
+    (supports test2.json format)
     """
     try:
         query_data = profiler_data.get('query', {})
@@ -506,7 +506,7 @@ def extract_performance_metrics_from_query_summary(profiler_data: Dict[str, Any]
         if overall_metrics['read_bytes'] > 0:
             bottleneck_indicators['remote_read_ratio'] = overall_metrics['read_remote_bytes'] / overall_metrics['read_bytes']
         
-        # クエリ情報の抽出
+        # Extract query information
         query_info = {
             'query_id': query_data.get('id', ''),
             'query_text': query_data.get('queryText', '')[:300] + "..." if len(query_data.get('queryText', '')) > 300 else query_data.get('queryText', ''),
@@ -626,7 +626,7 @@ def extract_performance_metrics(profiler_data: Dict[str, Any]) -> Dict[str, Any]
         "raw_profiler_data": profiler_data  # プラン分析のために生データを保存
     }
     
-    # 基本的なクエリ情報
+    # Basic query information
     if 'query' in profiler_data:
         query = profiler_data['query']
         metrics["query_info"] = {
@@ -2475,13 +2475,13 @@ def analyze_liquid_clustering_opportunities(profiler_data: Dict[str, Any], metri
         scan_performance.append(f"  - {scan['name']}: {scan['rows']:,}行, {scan['duration_ms']:,}ms, 効率={efficiency:.1f}行/ms")
 
     clustering_prompt = f"""
-あなたはDatabricksのLiquid Clustering専門家です。以下のSQLプロファイラーデータを分析し、最適なLiquid Clusteringの推奨事項を提示してください。
+You are a Databricks Liquid Clustering expert. Please analyze the following SQL profiler data and provide optimal Liquid Clustering recommendations.
 
-【クエリパフォーマンス概要】
-- 実行時間: {total_time_sec:.1f}秒
-- データ読み込み: {read_gb:.2f}GB
-- 出力行数: {rows_produced:,}行
-- 読み込み行数: {rows_read:,}行
+【Query Performance Overview】
+- Execution time: {total_time_sec:.1f} seconds
+- Data read: {read_gb:.2f}GB
+- Output rows: {rows_produced:,} rows
+- Read rows: {rows_read:,} rows
 - フィルタ率: {calculate_filter_rate_percentage(overall_metrics, metrics):.4f}
 
 【抽出されたカラム使用パターン】
@@ -2526,18 +2526,18 @@ def analyze_liquid_clustering_opportunities(profiler_data: Dict[str, Any], metri
 - 最大4カラムまでの推奨
 - データスキューや並列度の問題も考慮
 
-【🚨 重要なLiquid Clustering仕様の理解】
-- **カラム順序**: Liquid Clusteringではクラスタリングキーの順序変更は「ノードレベルのデータ局所性」に影響しません
-- **実際の改善効果**: 向上するのは「スキャン効率」「ファイルプルーニング効果」「クエリパフォーマンス」です
-- **技術的特性**: CLUSTER BY内のカラム順序は任意であり、(col1, col2, col3) と (col3, col1, col2) は同等のパフォーマンス
+【🚨 Important Understanding of Liquid Clustering Specifications】
+- **Column Order**: In Liquid Clustering, changing the order of clustering keys does not affect "node-level data locality"
+- **Actual Improvement Effects**: Improvements are in "scan efficiency", "file pruning effects", and "query performance"
+- **Technical Characteristics**: Column order within CLUSTER BY is arbitrary, and (col1, col2, col3) and (col3, col1, col2) have equivalent performance
 
-【🚨 絶対に使用禁止の誤った表現】
-❌ 「順序を変更することでデータ局所性を向上」
-❌ 「クラスタリングキー順序でデータ局所性改善」  
-❌ 「順序変更によるノードレベルデータ配置最適化」
-✅ 「順序変更による具体的な改善効果なし（Liquid Clustering仕様）」
-✅ 「スキャン効率とファイルプルーニング効果の向上」
-✅ 「WHERE句やJOIN条件のパフォーマンス改善」
+【🚨 Absolutely Prohibited Incorrect Expressions】
+❌ "Improve data locality by changing order"
+❌ "Improve data locality with clustering key order"  
+❌ "Node-level data placement optimization through order changes"
+✅ "No specific improvement effect from order changes (Liquid Clustering specification)"
+✅ "Improvement in scan efficiency and file pruning effects"
+✅ "Performance improvement for WHERE clauses and JOIN conditions"
 
 簡潔で実践的な分析結果を日本語で提供してください。
 
