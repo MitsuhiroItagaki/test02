@@ -2198,7 +2198,7 @@ def extract_liquid_clustering_data(profiler_data: Dict[str, Any], metrics: Dict[
                 if table_info.get('is_view', False):
                     print(f"  📊 ビュー: {table_name}")
                     print(f"     Alias: {table_info.get('alias', 'None')}")
-                      print(f"     Table type: {table_info.get('table_type', 'unknown')}")
+                    print(f"     Table type: {table_info.get('table_type', 'unknown')}")
                     
                     underlying_tables = table_info.get('underlying_tables', [])
                     if underlying_tables:
