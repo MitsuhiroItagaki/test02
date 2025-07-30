@@ -414,11 +414,11 @@ print("✅ Function definition completed: load_profiler_json")
 # MAGIC %md
 # MAGIC ## 📊 Performance Metrics Extraction Function
 # MAGIC
-# MAGIC このセルでは以下の機能を定義します：
-# MAGIC - SQLプロファイラーデータからのメトリクス抽出
-# MAGIC - クエリ基本情報の取得
-# MAGIC - 全体/ステージ/ノード別パフォーマンス指標の計算
-# MAGIC - スピル検出とボトルネック指標の分析
+# MAGIC This cell defines the following functions:
+# MAGIC - Metrics extraction from SQL profiler data
+# MAGIC - Query basic information retrieval
+# MAGIC - Overall/stage/node-level performance indicator calculation
+# MAGIC - Spill detection and bottleneck indicator analysis
 
 # COMMAND ----------
 
@@ -742,11 +742,11 @@ print("✅ Function definition completed: extract_performance_metrics")
 # MAGIC %md
 # MAGIC ## 🏷️ Node Name Analysis & Enhancement Function
 # MAGIC
-# MAGIC このセルでは以下の機能を定義します：
-# MAGIC - 汎用的なノード名（Whole Stage Codegen等）の具体化
-# MAGIC - 関連ノードの検索と最適な処理名の選択
-# MAGIC - Photon情報やテーブル情報の付加
-# MAGIC - 処理名の意味的な改善
+# MAGIC This cell defines the following functions:
+# MAGIC - Concretization of generic node names (Whole Stage Codegen, etc.)
+# MAGIC - Related node search and optimal processing name selection
+# MAGIC - Addition of Photon information and table information
+# MAGIC - Semantic improvement of processing names
 
 # COMMAND ----------
 
@@ -1687,11 +1687,11 @@ print("✅ Function definition completed: get_meaningful_node_name, extract_shuf
 # MAGIC %md
 # MAGIC ## 🎯 Bottleneck Indicator Calculation Function
 # MAGIC
-# MAGIC このセルでは以下の機能を定義します：
-# MAGIC - 実行時間とコンパイル時間の比率分析
-# MAGIC - キャッシュ効率とデータ処理効率の計算
-# MAGIC - Photon利用率の分析
-# MAGIC - スピル検出とシャッフル/並列度の問題特定
+# MAGIC This cell defines the following functions:
+# MAGIC - Execution time and compilation time ratio analysis
+# MAGIC - Cache efficiency and data processing efficiency calculation
+# MAGIC - Photon utilization analysis
+# MAGIC - Spill detection and shuffle/parallelism issue identification
 
 # COMMAND ----------
 
@@ -1921,11 +1921,11 @@ print("✅ Function definition completed: calculate_bottleneck_indicators")
 # MAGIC %md
 # MAGIC ## 🧬 Liquid Clustering Analysis Function
 # MAGIC
-# MAGIC このセルでは以下の機能を定義します：
-# MAGIC - プロファイラーデータからのカラム情報抽出
-# MAGIC - フィルター、JOIN、GROUP BY条件の分析
-# MAGIC - データスキューとパフォーマンス影響の評価
-# MAGIC - クラスタリング推奨カラムの特定
+# MAGIC This cell defines the following functions:
+# MAGIC - Column information extraction from profiler data
+# MAGIC - Filter, JOIN, and GROUP BY condition analysis
+# MAGIC - Data skew and performance impact evaluation
+# MAGIC - Clustering recommended column identification
 
 # COMMAND ----------
 
@@ -2932,11 +2932,11 @@ print("✅ 関数定義完了: analyze_liquid_clustering_opportunities, save_liq
 # MAGIC %md
 # MAGIC ## 🤖 LLM-powered Bottleneck Analysis Function
 # MAGIC
-# MAGIC このセルでは以下の機能を定義します：
-# MAGIC - 抽出されたメトリクスのLLM分析用フォーマット
-# MAGIC - 複数LLMプロバイダーの対応（Databricks/OpenAI/Azure/Anthropic）
-# MAGIC - 日本語での詳細な分析レポート生成
-# MAGIC - エラーハンドリングとフォールバック分析
+# MAGIC This cell defines the following functions:
+# MAGIC - LLM analysis formatting of extracted metrics
+# MAGIC - Multiple LLM provider support (Databricks/OpenAI/Azure/Anthropic)
+# MAGIC - Detailed analysis report generation in English
+# MAGIC - Error handling and fallback analysis
 
 # COMMAND ----------
 
@@ -3702,12 +3702,12 @@ print("✅ 関数定義完了: analyze_bottlenecks_with_llm")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 📋 LLMボトルネック分析実行の準備
+# MAGIC ## 📋 LLM Bottleneck Analysis Execution Preparation
 # MAGIC
-# MAGIC このセルでは以下の処理を実行します：
-# MAGIC - 設定されたLLMプロバイダーの確認と表示
-# MAGIC - 分析開始の準備とメッセージ表示
-# MAGIC - プロンプト最適化による安定性向上
+# MAGIC This cell performs the following processing:
+# MAGIC - Verification and display of configured LLM provider
+# MAGIC - Analysis start preparation and message display
+# MAGIC - Stability improvement through prompt optimization
 
 # COMMAND ----------
 
@@ -3783,12 +3783,12 @@ except Exception as e:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 🚀 SQLプロファイラーJSONファイル読み込み実行
+# MAGIC ## 🚀 SQL Profiler JSON File Loading Execution
 # MAGIC
-# MAGIC このセルでは以下の処理を実行します：
-# MAGIC - 設定されたファイルパスからJSONファイルの読み込み
-# MAGIC - ファイルサイズと基本情報の表示
-# MAGIC - エラーハンドリングと処理停止制御
+# MAGIC This cell performs the following processing:
+# MAGIC - JSON file loading from configured file path
+# MAGIC - File size and basic information display
+# MAGIC - Error handling and processing stop control
 
 # COMMAND ----------
 
@@ -3829,13 +3829,13 @@ print()
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 📊 パフォーマンスメトリクス抽出と概要表示
+# MAGIC ## 📊 Performance Metrics Extraction and Overview Display
 # MAGIC
-# MAGIC このセルでは以下の処理を実行します：
-# MAGIC - プロファイラーデータからメトリクスの抽出
-# MAGIC - クエリ基本情報の表示
-# MAGIC - 全体パフォーマンス指標の計算と表示
-# MAGIC - Liquid Clusteringの分析結果表示
+# MAGIC This cell performs the following processing:
+# MAGIC - Metrics extraction from profiler data
+# MAGIC - Query basic information display
+# MAGIC - Overall performance indicator calculation and display
+# MAGIC - Liquid Clustering analysis result display
 
 # COMMAND ----------
 
@@ -3872,9 +3872,9 @@ print(f"📊 高インパクトテーブル数: {liquid_summary.get('high_impact
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 🔍 ボトルネック指標詳細
+# MAGIC ## 🔍 Bottleneck Indicator Details
 # MAGIC
-# MAGIC このセルでは以下の処理を実行します：
+# MAGIC This cell performs the following processing:
 # MAGIC - Photon エンジンの利用状況とパフォーマンス分析
 # MAGIC - シャッフル操作と並列度の問題検出
 # MAGIC - 各種パフォーマンス指標の詳細表示
