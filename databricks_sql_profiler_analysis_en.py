@@ -3146,7 +3146,7 @@ def analyze_bottlenecks_with_llm(metrics: Dict[str, Any]) -> str:
     try:
         detailed_bottleneck = extract_detailed_bottleneck_analysis(metrics)
     except Exception as e:
-        print(f"⚠️ 詳細ボトルネック分析でエラー: {e}")
+        print(f"⚠️ Error in detailed bottleneck analysis: {e}")
         detailed_bottleneck = {
             'top_bottleneck_nodes': [],
             'performance_recommendations': []
@@ -3720,11 +3720,11 @@ print("=" * 80)
 if provider == "databricks":
     endpoint = LLM_CONFIG["databricks"]["endpoint_name"]
     print(f"🔗 Databricks Model Serving エンドポイント: {endpoint}")
-    print("⚠️  Model Servingエンドポイントが稼働中である必要があります")
+    print("⚠️  Model Serving endpoint must be operational")
 elif provider == "openai":
     model = LLM_CONFIG["openai"]["model"]
     print(f"🔗 OpenAI モデル: {model}")
-    print("⚠️  OpenAI APIキーが必要です")
+    print("⚠️  OpenAI API key is required")
 elif provider == "azure_openai":
     deployment = LLM_CONFIG["azure_openai"]["deployment_name"]
     print(f"🤖 Azure OpenAI ({deployment}) によるボトルネック分析を開始します...")
@@ -3740,7 +3740,7 @@ print()
 # extracted_metrics変数が定義されているかチェック
 try:
     extracted_metrics
-    print("✅ extracted_metrics変数が確認されました")
+    print("✅ extracted_metrics variable confirmed")
     analysis_result = analyze_bottlenecks_with_llm(extracted_metrics)
 except NameError:
     print("❌ extracted_metrics変数が定義されていません")
