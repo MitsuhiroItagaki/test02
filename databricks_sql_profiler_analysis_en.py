@@ -3024,7 +3024,7 @@ def analyze_bottlenecks_with_llm(metrics: Dict[str, Any]) -> str:
                 try:
                     with open(latest_explain_file, 'r', encoding='utf-8') as f:
                         explain_content = f.read()
-                        print(f"✅ 古い形式のEXPLAIN結果を読み込み: {latest_explain_file}")
+                        print(f"✅ Loaded legacy format EXPLAIN results: {latest_explain_file}")
                         
                     if "== Physical Plan ==" in explain_content:
                         physical_plan_start = explain_content.find("== Physical Plan ==")
@@ -3037,7 +3037,7 @@ def analyze_bottlenecks_with_llm(metrics: Dict[str, Any]) -> str:
                         photon_start = explain_content.find("== Photon Explanation ==")
                         photon_explanation = explain_content[photon_start:].strip()
                 except Exception as e:
-                    print(f"⚠️ 古い形式EXPLAIN結果の読み込みに失敗: {str(e)}")
+                    print(f"⚠️ Failed to load legacy format EXPLAIN results: {str(e)}")
             else:
                 print("⚠️ Bottleneck analysis: EXPLAIN・EXPLAIN COST result files not found")
     
@@ -3526,7 +3526,7 @@ def _call_databricks_llm(prompt: str) -> str:
         for attempt in range(max_retries):
             try:
                 if attempt > 0:
-                    print(f"🔄 リトライ中... (試行 {attempt + 1}/{max_retries})")
+                    print(f"🔄 Retrying... (attempt {attempt + 1}/{max_retries})")
                 
                 response = requests.post(endpoint_url, headers=headers, json=payload, timeout=300)
                 
@@ -3536,7 +3536,7 @@ def _call_databricks_llm(prompt: str) -> str:
                     print("✅ Bottleneck analysis completed")
                     return analysis_text
                 else:
-                    error_msg = f"APIエラー: ステータスコード {response.status_code}"
+                    error_msg = f"API Error: Status code {response.status_code}"
                     if response.status_code == 400:
                         # 400エラーの場合は詳細な解決策を提供
                         error_detail = response.text
@@ -3544,28 +3544,28 @@ def _call_databricks_llm(prompt: str) -> str:
                             if attempt == max_retries - 1:
                                 detailed_error = f"""❌ {error_msg}
 
-🔧 トークン制限エラーの解決策:
-1. LLM_CONFIG["databricks"]["max_tokens"] を 65536 (64K) に削減
-2. より単純なクエリで再試行
-3. 手動でSQL最適化を実行
-4. クエリを分割して段階的に最適化
+🔧 Token limit error solutions:
+1. Reduce LLM_CONFIG["databricks"]["max_tokens"] to 65536 (64K)
+2. Retry with simpler query
+3. Perform manual SQL optimization
+4. Split query and optimize incrementally
 
-💡 推奨設定:
+💡 Recommended settings:
 LLM_CONFIG["databricks"]["max_tokens"] = 65536
 LLM_CONFIG["databricks"]["thinking_budget_tokens"] = 32768
 
-詳細エラー: {error_detail}"""
+Detailed error: {error_detail}"""
                                 print(detailed_error)
                                 return detailed_error
                             else:
-                                print(f"⚠️ {error_msg} (トークン制限) - リトライします...")
+                                print(f"⚠️ {error_msg} (Token limit) - Retrying...")
                                 continue
                     
                     if attempt == max_retries - 1:
-                        print(f"❌ {error_msg}\nレスポンス: {response.text}")
-                        return f"{error_msg}\nレスポンス: {response.text}"
+                        print(f"❌ {error_msg}\nResponse: {response.text}")
+                        return f"{error_msg}\nResponse: {response.text}"
                     else:
-                        print(f"⚠️ {error_msg} - リトライします...")
+                        print(f"⚠️ {error_msg} - Retrying...")
                         continue
                         
             except requests.exceptions.Timeout:
@@ -3585,11 +3585,11 @@ LLM_CONFIG["databricks"]["thinking_budget_tokens"] = 32768
                     print(f"❌ {timeout_msg}")
                     return timeout_msg
                 else:
-                    print(f"⏰ タイムアウト発生（300秒）- リトライします... (試行 {attempt + 1}/{max_retries})")
+                    print(f"⏰ Timeout occurred (300 seconds) - Retrying... (attempt {attempt + 1}/{max_retries})")
                     continue
                     
     except Exception as e:
-        return f"Databricks API呼び出しエラー: {str(e)}"
+        return f"Databricks API call error: {str(e)}"
 
 def _call_openai_llm(prompt: str) -> str:
     """Call OpenAI API"""
