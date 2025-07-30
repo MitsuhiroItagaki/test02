@@ -740,7 +740,7 @@ print("✅ Function definition completed: extract_performance_metrics")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 🏷️ ノード名解析・改善関数
+# MAGIC ## 🏷️ Node Name Analysis & Enhancement Function
 # MAGIC
 # MAGIC このセルでは以下の機能を定義します：
 # MAGIC - 汎用的なノード名（Whole Stage Codegen等）の具体化
@@ -1685,7 +1685,7 @@ print("✅ 関数定義完了: get_meaningful_node_name, extract_shuffle_attribu
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 🎯 ボトルネック指標計算関数
+# MAGIC ## 🎯 Bottleneck Indicator Calculation Function
 # MAGIC
 # MAGIC このセルでは以下の機能を定義します：
 # MAGIC - 実行時間とコンパイル時間の比率分析
@@ -1919,7 +1919,7 @@ print("✅ 関数定義完了: calculate_bottleneck_indicators")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 🧬 Liquid Clustering分析関数
+# MAGIC ## 🧬 Liquid Clustering Analysis Function
 # MAGIC
 # MAGIC このセルでは以下の機能を定義します：
 # MAGIC - プロファイラーデータからのカラム情報抽出
@@ -2930,7 +2930,7 @@ print("✅ 関数定義完了: analyze_liquid_clustering_opportunities, save_liq
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 🤖 LLMによるボトルネック分析関数
+# MAGIC ## 🤖 LLM-powered Bottleneck Analysis Function
 # MAGIC
 # MAGIC このセルでは以下の機能を定義します：
 # MAGIC - 抽出されたメトリクスのLLM分析用フォーマット
@@ -3766,19 +3766,19 @@ except Exception as e:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC # 🚀 クエリプロファイル分析セクション
+# MAGIC # 🚀 Query Profile Analysis Section
 # MAGIC
-# MAGIC **ここからメインの分析処理が開始されます**
+# MAGIC **Main analysis processing starts from here**
 # MAGIC
-# MAGIC 📋 **実行手順:**
-# MAGIC 1. 上記の🔧設定・準備セクションをすべて実行してください
-# MAGIC 2. 以下のセルを順番に実行して分析を行います
-# MAGIC 3. エラーが発生した場合は、設定セクションから再実行してください
+# MAGIC 📋 **Execution Steps:**
+# MAGIC 1. Execute all cells in the 🔧 Configuration & Setup section above
+# MAGIC 2. Run the following cells in order to perform analysis
+# MAGIC 3. If errors occur, re-execute from the configuration section
 # MAGIC
-# MAGIC ⚠️ **注意:**
-# MAGIC - 🔧設定・準備セクション → 🚀メイン処理セクション → 🔧SQL最適化セクション の順序で実行
-# MAGIC - ファイルパスの設定は必ず最初のセルで行ってください
-# MAGIC - LLMエンドポイントの設定を確認してください
+# MAGIC ⚠️ **Important Notes:**
+# MAGIC - Execute in order: 🔧 Configuration & Setup → 🚀 Main Processing → 🔧 SQL Optimization sections
+# MAGIC - File path configuration must be done in the first cell
+# MAGIC - Verify LLM endpoint configuration
 
 # COMMAND ----------
 
