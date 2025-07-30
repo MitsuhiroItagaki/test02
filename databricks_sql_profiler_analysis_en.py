@@ -58,33 +58,33 @@
 
 # COMMAND ----------
 
-# 📁 SQLプロファイラーJSONファイルのパス設定
+# 📁 SQL Profiler JSON File Path Configuration
 # 
-# 以下のJSON_FILE_PATHを実際のファイルパスに変更してください：
+# Please change the JSON_FILE_PATH below to your actual file path:
 
-# ノートブック環境用のファイルパス設定（以下の中から選択してください）
+# Notebook environment file path configuration (please select from the following options)
 
-# オプション1: チューニング前プランファイル（推奨）
+# Option 1: Pre-tuning plan file (recommended)
 JSON_FILE_PATH = '/Workspace/Shared/AutoSQLTuning/Query2.json'
 
-# オプション2: 他のJSONファイルを使用する場合は、以下のコメントアウトを解除して編集
+# Option 2: To use other JSON files, uncomment and edit the following
 # JSON_FILE_PATH = '/Volumes/main/base/mitsuhiro_vol/nophoton.json'
 # JSON_FILE_PATH = '/Volumes/main/base/mitsuhiro_vol/POC1.json'
 # JSON_FILE_PATH = '/Volumes/main/base/mitsuhiro_vol/your_file.json'
 
-# コマンドライン環境用（オプション）
+# Command line environment (optional)
 import sys
 if len(sys.argv) > 1 and not sys.argv[1].startswith('-'):
-    # コマンドライン引数がフラグ（-で始まる）でない場合のみ使用
+    # Use only when command line argument is not a flag (doesn't start with -)
     JSON_FILE_PATH = sys.argv[1]
 
-# 🌐 出力言語設定（OUTPUT_LANGUAGE: 'ja' = 日本語, 'en' = 英語）
+# 🌐 Output language setting (OUTPUT_LANGUAGE: 'ja' = Japanese, 'en' = English)
 OUTPUT_LANGUAGE = 'ja'
 
-# 🔍 EXPLAIN文実行設定（EXPLAIN_ENABLED: 'Y' = 実行する, 'N' = 実行しない）
+# 🔍 EXPLAIN statement execution setting (EXPLAIN_ENABLED: 'Y' = execute, 'N' = do not execute)
 EXPLAIN_ENABLED = 'Y'
 
-# 🐛 デバッグモード設定（DEBUG_ENABLED: 'Y' = 中間ファイル保持, 'N' = 最終ファイルのみ保持）
+# 🐛 Debug mode setting (DEBUG_ENABLED: 'Y' = keep intermediate files, 'N' = keep final files only)
 DEBUG_ENABLED = 'Y'
 
 
@@ -169,15 +169,15 @@ MAX_RETRIES = 3
 # 注：構文エラーの修正（MAX_RETRIES）とは別のパラメータです
 MAX_OPTIMIZATION_ATTEMPTS = 3
 
-# 🗂️ カタログとデータベース設定（EXPLAIN文実行時に使用）
+# 🗂️ Catalog and database configuration (used when executing EXPLAIN statements)
 CATALOG = 'tpcds'
 DATABASE = 'tpcds_sf1000_delta_lc'
 
-# 💡 使用例:
-# OUTPUT_LANGUAGE = 'ja'  # 日本語でファイル出力
-# OUTPUT_LANGUAGE = 'en'  # 英語でファイル出力
+# 💡 Usage examples:
+# OUTPUT_LANGUAGE = 'ja'  # Output files in Japanese
+# OUTPUT_LANGUAGE = 'en'  # Output files in English
 
-# 🌐 多言語メッセージ辞書
+# 🌐 Multilingual message dictionary
 MESSAGES = {
     'ja': {
         'bottleneck_title': 'Databricks SQLプロファイラー ボトルネック分析結果',
@@ -212,10 +212,10 @@ MESSAGES = {
 }
 
 def get_message(key: str) -> str:
-    """多言語メッセージを取得"""
+    """Get multilingual message"""
     return MESSAGES.get(OUTPUT_LANGUAGE, MESSAGES['ja']).get(key, key)
 
-# 📋 対応するファイルパス形式の例:
+# 📋 Supported file path format examples:
 # Unity Catalog Volumes:
 # JSON_FILE_PATH = '/Volumes/catalog/schema/volume/profiler.json'
 # 
@@ -913,7 +913,7 @@ def get_meaningful_node_name(node: Dict[str, Any], extracted_metrics: Dict[str, 
     return enhanced_name
 
 def find_related_specific_nodes(target_node_id: str, nodes: list, edges: list) -> list:
-    """指定ノードに関連する具体的な処理ノードを検索"""
+    """Search for specific processing nodes related to the specified node"""
     
     # エッジから関連ノードを特定
     related_node_ids = set()
@@ -941,7 +941,7 @@ def find_related_specific_nodes(target_node_id: str, nodes: list, edges: list) -
     return related_nodes
 
 def is_specific_process_name(name: str) -> bool:
-    """具体的な処理名かどうかを判定"""
+    """Determine if it's a specific processing name"""
     specific_keywords = [
         'columnar to row', 'row to columnar', 'filter', 'project', 'join',
         'aggregate', 'sort', 'exchange', 'broadcast', 'scan', 'union'
@@ -966,7 +966,7 @@ def is_specific_process_name(name: str) -> bool:
     return True
 
 def get_most_specific_process_name(nodes: list) -> str:
-    """最も具体的な処理名を選択"""
+    """Select the most specific processing name"""
     if not nodes:
         return ""
     
@@ -992,7 +992,7 @@ def get_most_specific_process_name(nodes: list) -> str:
     return ""
 
 def get_most_specific_process_name_from_list(node_names: list) -> str:
-    """ノード名のリストから最も具体的な処理名を選択"""
+    """Select the most specific processing name from a list of node names"""
     if not node_names:
         return ""
     
@@ -1696,7 +1696,7 @@ print("✅ Function definition completed: get_meaningful_node_name, extract_shuf
 # COMMAND ----------
 
 def calculate_bottleneck_indicators(metrics: Dict[str, Any]) -> Dict[str, Any]:
-    """ボトルネック指標を計算"""
+    """Calculate bottleneck metrics"""
     indicators = {}
     
     overall = metrics.get('overall_metrics', {})
@@ -3484,7 +3484,7 @@ def analyze_bottlenecks_with_llm(metrics: Dict[str, Any]) -> str:
 
 
 def _call_databricks_llm(prompt: str) -> str:
-    """Databricks Model Serving APIを呼び出す"""
+    """Call Databricks Model Serving API"""
     try:
         # Databricksトークンの取得
         try:
@@ -3592,7 +3592,7 @@ LLM_CONFIG["databricks"]["thinking_budget_tokens"] = 32768
         return f"Databricks API呼び出しエラー: {str(e)}"
 
 def _call_openai_llm(prompt: str) -> str:
-    """OpenAI APIを呼び出す"""
+    """Call OpenAI API"""
     try:
         config = LLM_CONFIG["openai"]
         api_key = config["api_key"] or os.environ.get('OPENAI_API_KEY')
@@ -3627,7 +3627,7 @@ def _call_openai_llm(prompt: str) -> str:
         return f"OpenAI API呼び出しエラー: {str(e)}"
 
 def _call_azure_openai_llm(prompt: str) -> str:
-    """Azure OpenAI APIを呼び出す"""
+    """Call Azure OpenAI API"""
     try:
         config = LLM_CONFIG["azure_openai"]
         api_key = config["api_key"] or os.environ.get('AZURE_OPENAI_API_KEY')
@@ -3662,7 +3662,7 @@ def _call_azure_openai_llm(prompt: str) -> str:
         return f"Azure OpenAI API呼び出しエラー: {str(e)}"
 
 def _call_anthropic_llm(prompt: str) -> str:
-    """Anthropic APIを呼び出す"""
+    """Call Anthropic API"""
     try:
         config = LLM_CONFIG["anthropic"]
         api_key = config["api_key"] or os.environ.get('ANTHROPIC_API_KEY')
@@ -4074,7 +4074,7 @@ def format_thinking_response(response) -> str:
     return final_result
 
 def extract_best_content_from_dict(item_dict, excluded_keys):
-    """辞書から最適なコンテンツを抽出"""
+    """Extract optimal content from dictionary"""
     # 優先順位: text > summary_text > content > message > その他
     priority_keys = ['text', 'summary_text', 'content', 'message', 'response']
     
@@ -4094,7 +4094,7 @@ def extract_best_content_from_dict(item_dict, excluded_keys):
     return None
 
 def looks_like_json_structure(text):
-    """テキストがJSON構造を含んでいるかチェック"""
+    """Check if text contains JSON structure"""
     json_indicators = [
         "{'type':", '[{\'type\':', '{"type":', '[{"type":',
         "'text':", '"text":', "'summary_text':", '"summary_text":',
@@ -4104,7 +4104,7 @@ def looks_like_json_structure(text):
     return any(indicator.lower() in text_lower for indicator in json_indicators)
 
 def clean_response_text(text):
-    """レスポンステキストのクリーンアップ"""
+    """Clean up response text"""
     import re
     
     if not text or not isinstance(text, str):
@@ -4145,7 +4145,7 @@ def clean_response_text(text):
     return text
 
 def is_valid_content(text):
-    """コンテンツが有効かどうかをチェック"""
+    """Check if content is valid"""
     import re
     
     if not text or len(text.strip()) < 10:
@@ -4167,7 +4167,7 @@ def is_valid_content(text):
     return True
 
 def final_quality_check(text):
-    """最終的な品質チェックとクリーンアップ"""
+    """Final quality check and cleanup"""
     import re  # reモジュールのインポートを追加
     
     if not text:
@@ -4194,7 +4194,7 @@ def final_quality_check(text):
     return text
 
 def ensure_japanese_consistency(text):
-    """日本語の一貫性を確保"""
+    """Ensure Japanese text consistency"""
     import re
     
     # 明らかに破損している部分を除去
@@ -4245,7 +4245,7 @@ def ensure_japanese_consistency(text):
     return text.strip()
 
 def ensure_english_consistency(text):
-    """英語の一貫性を確保"""
+    """Ensure English text consistency"""
     import re
     
     # 同様のクリーンアップを英語用に実装
@@ -4282,7 +4282,7 @@ def extract_main_content_from_thinking_response(response) -> str:
     return format_thinking_response(response)
 
 def convert_sets_to_lists(obj):
-    """set型をlist型に変換してJSONシリアライズ可能にする"""
+    """Convert set types to list types for JSON serialization"""
     if isinstance(obj, set):
         return list(obj)
     elif isinstance(obj, dict):
