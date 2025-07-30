@@ -4820,7 +4820,7 @@ llm_analysis = liquid_analysis.get('llm_analysis', '')
 if llm_analysis:
     print(llm_analysis)
 else:
-    print("❌ LLM分析結果が見つかりません")
+    print("❌ LLM analysis results not found")
 
 # 抽出データの概要を表示
 extracted_data = liquid_analysis.get('extracted_data', {})
@@ -7122,8 +7122,8 @@ FROM table1 cs
         elif provider == "anthropic":
             optimized_result = _call_anthropic_llm(optimization_prompt)
         else:
-            error_msg = "⚠️ 設定されたLLMプロバイダーが認識できません"
-            print(f"❌ LLM最適化エラー: {error_msg}")
+            error_msg = "⚠️ Configured LLM provider is not recognized"
+            print(f"❌ LLM optimization error: {error_msg}")
             return f"LLM_ERROR: {error_msg}"
         
         # LLMレスポンスのエラーチェック（重要）
@@ -7145,7 +7145,7 @@ FROM table1 cs
             is_error_response = any(indicator in optimized_result for indicator in error_indicators)
             
             if is_error_response:
-                print(f"❌ LLM API呼び出しでエラーが発生: {optimized_result[:200]}...")
+                print(f"❌ Error occurred in LLM API call: {optimized_result[:200]}...")
                 return f"LLM_ERROR: {optimized_result}"
         
         # thinking_enabled: Trueの場合にoptimized_resultがリストになることがあるため対応
@@ -7153,8 +7153,8 @@ FROM table1 cs
         return optimized_result
         
     except Exception as e:
-        error_msg = f"⚠️ SQL最適化の生成中にエラーが発生しました: {str(e)}"
-        print(f"❌ LLM最適化例外エラー: {error_msg}")
+        error_msg = f"⚠️ Error occurred during SQL optimization generation: {str(e)}"
+        print(f"❌ LLM optimization exception error: {error_msg}")
         return f"LLM_ERROR: {error_msg}"
 
 
@@ -8023,7 +8023,7 @@ def summarize_explain_results_with_llm(explain_content: str, explain_cost_conten
             summary_result = _call_anthropic_llm(summarization_prompt)
         else:
             # エラー時は切り詰め版を返す
-            print("❌ LLMプロバイダーエラー: 切り詰め版を使用します")
+            print("❌ LLM provider error: Using truncated version")
             return {
                 'explain_summary': explain_content[:30000] + "\n\n⚠️ 切り詰められました",
                 'explain_cost_summary': explain_cost_content[:30000] + "\n\n⚠️ 切り詰められました", 
@@ -8034,7 +8034,7 @@ def summarize_explain_results_with_llm(explain_content: str, explain_cost_conten
         
         # LLMエラーチェック
         if isinstance(summary_result, str) and summary_result.startswith("LLM_ERROR:"):
-            print(f"❌ LLM要約エラー: 切り詰め版を使用します - {summary_result[10:200]}...")
+            print(f"❌ LLM summary error: Using truncated version - {summary_result[10:200]}...")
             return {
                 'explain_summary': explain_content[:30000] + "\n\n⚠️ 切り詰められました",
                 'explain_cost_summary': explain_cost_content[:30000] + "\n\n⚠️ 切り詰められました",
@@ -8096,7 +8096,7 @@ def summarize_explain_results_with_llm(explain_content: str, explain_cost_conten
         }
         
     except Exception as e:
-        print(f"❌ EXPLAIN要約中にエラー: {str(e)}")
+        print(f"❌ Error during EXPLAIN summarization: {str(e)}")
         # エラー時は切り詰め版を返す
         return {
             'explain_summary': explain_content[:30000] + f"\n\n⚠️ 要約エラーのため切り詰められました: {str(e)}",
@@ -9236,7 +9236,7 @@ def refine_report_with_llm(raw_report: str, query_id: str) -> str:
             )
             
             if is_error_response:
-                print(f"❌ LLMレポート推敲でエラー検出: {refined_report[:200]}...")
+                print(f"❌ Error detected in LLM report refinement: {refined_report[:200]}...")
                 print("📄 元のレポートを返します")
                 return raw_report
         
@@ -10122,12 +10122,12 @@ def demonstrate_execution_plan_size_extraction():
             if size_mb <= 30:
                 print(f"  ✅ {table_name}: {size_mb:.1f}MB ≤ 30MB → BROADCAST推奨")
             else:
-                print(f"  ❌ {table_name}: {size_mb:.1f}MB > 30MB → BROADCAST非推奨")
+                print(f"  ❌ {table_name}: {size_mb:.1f}MB > 30MB → BROADCAST not recommended")
     
     print("")
     print("🎯 従来の推定方法との比較:")
     print("  📈 従来: メトリクスベースの間接推定（推定精度: 中）")
-    print("  ❌ 新機能: 実行プランの estimatedSizeInBytes 活用（利用不可のため無効化）")
+    print("  ❌ New feature: Utilizing estimatedSizeInBytes from execution plan (disabled due to unavailability)")
     print("  ℹ️ 現在: 3.0倍圧縮率での保守的推定を採用")
     
     return {}
@@ -10226,7 +10226,7 @@ try:
     print("📌 このファイルはDEBUG_ENABLED設定に関係なく最終アウトプットとして保持されます")
     
 except Exception as e:
-    print(f"❌ オリジナルクエリのファイル保存に失敗: {str(e)}")
+    print(f"❌ Failed to save original query file: {str(e)}")
     print("⚠️ 処理は続行しますが、オリジナルクエリファイルは作成されませんでした")
 
 # COMMAND ----------
@@ -10437,10 +10437,10 @@ def generate_improved_query_for_performance_degradation(original_query: str, ana
         elif provider == "azure_openai":
             improved_result = _call_azure_openai_llm(performance_improvement_prompt)
         elif provider == "anthropic":
-            improved_result = _call_anthropic_llm(performance_improvement_prompt)
-        else:
-            error_msg = "⚠️ 設定されたLLMプロバイダーが認識できません"
-            print(f"❌ LLMパフォーマンス改善エラー: {error_msg}")
+                          improved_result = _call_anthropic_llm(performance_improvement_prompt)
+          else:
+              error_msg = "⚠️ Configured LLM provider is not recognized"
+              print(f"❌ LLM performance improvement error: {error_msg}")
             return f"LLM_ERROR: {error_msg}"
         
         # LLMレスポンスのエラーチェック
