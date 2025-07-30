@@ -135,7 +135,7 @@ def save_debug_query_trial(query: str, attempt_num: int, trial_type: str, query_
 
 """
         
-        # ファイル保存
+        # File saving
         full_content = metadata_header + query
         
         with open(filename, 'w', encoding='utf-8') as f:
@@ -331,7 +331,7 @@ print('   LLM_CONFIG["databricks"]["thinking_budget_tokens"] = 65536  # Thinking
 print('   LLM_CONFIG["databricks"]["max_tokens"] = 131072  # Maximum tokens (128K)')
 print()
 
-# 必要なライブラリのインポート
+# Import necessary libraries
 try:
     import requests
 except ImportError:
@@ -345,14 +345,14 @@ except ImportError:
     SparkSession = None
     print("✅ Spark Version: Not available")
 
-# Databricks Runtime情報を安全に取得
+# Safely retrieve Databricks Runtime information
 try:
     if spark is not None:
         runtime_version = spark.conf.get('spark.databricks.clusterUsageTags.sparkVersion')
     print(f"✅ Databricks Runtime: {runtime_version}")
 except Exception:
     try:
-        # 代替手段でDBR情報を取得
+        # Retrieve DBR information using alternative method
         dbr_version = spark.conf.get('spark.databricks.clusterUsageTags.clusterName', 'Unknown')
         print(f"✅ Databricks Cluster: {dbr_version}")
     except Exception:
@@ -381,22 +381,22 @@ def load_profiler_json(file_path: str) -> Dict[str, Any]:
         Dict: Parsed JSON data
     """
     try:
-        # DBFSパスの場合は適切に処理
+        # Handle DBFS paths appropriately
         if file_path.startswith('/dbfs/'):
             with open(file_path, 'r', encoding='utf-8') as file:
                 data = json.load(file)
         elif file_path.startswith('dbfs:/'):
-            # dbfs: プレフィックスを/dbfs/に変換
+            # Convert dbfs: prefix to /dbfs/
             local_path = file_path.replace('dbfs:', '/dbfs')
             with open(local_path, 'r', encoding='utf-8') as file:
                 data = json.load(file)
         elif file_path.startswith('/FileStore/'):
-            # FileStore パスを /dbfs/FileStore/ に変換
+            # Convert FileStore path to /dbfs/FileStore/
             local_path = '/dbfs' + file_path
             with open(local_path, 'r', encoding='utf-8') as file:
                 data = json.load(file)
         else:
-            # ローカルファイル
+            # Local file
             with open(file_path, 'r', encoding='utf-8') as file:
                 data = json.load(file)
         
@@ -426,7 +426,7 @@ def detect_data_format(profiler_data: Dict[str, Any]) -> str:
     """
     Detect JSON data format
     """
-    # SQLプロファイラー形式の検出
+    # SQL profiler format detection
     if 'graphs' in profiler_data and isinstance(profiler_data['graphs'], list):
         if len(profiler_data['graphs']) > 0:
             return 'sql_profiler'
@@ -457,7 +457,7 @@ def extract_performance_metrics_from_query_summary(profiler_data: Dict[str, Any]
         print(f"   - Data read: {metrics_data.get('readBytes', 0) / 1024 / 1024 / 1024:.2f} GB")
         print(f"   - Rows processed: {metrics_data.get('rowsReadCount', 0):,} rows")
         
-        # 基本メトリクスの抽出
+        # Extract basic metrics
         overall_metrics = {
             'total_time_ms': metrics_data.get('totalTimeMs', 0),
             'execution_time_ms': metrics_data.get('executionTimeMs', 0),
@@ -477,18 +477,18 @@ def extract_performance_metrics_from_query_summary(profiler_data: Dict[str, Any]
             'photon_utilization_ratio': 0
         }
         
-        # Photon利用率の計算
+        # Calculate Photon utilization rate
         if overall_metrics['task_total_time_ms'] > 0:
             overall_metrics['photon_utilization_ratio'] = min(
                 overall_metrics['photon_total_time_ms'] / overall_metrics['task_total_time_ms'], 1.0
             )
         
-        # キャッシュヒット率の計算
+        # Calculate cache hit rate
         cache_hit_ratio = 0
         if overall_metrics['read_bytes'] > 0:
             cache_hit_ratio = overall_metrics['read_cache_bytes'] / overall_metrics['read_bytes']
         
-        # ボトルネック指標の計算
+        # Calculate bottleneck indicators
         bottleneck_indicators = {
             'spill_bytes': overall_metrics['spill_to_disk_bytes'],
             'has_spill': overall_metrics['spill_to_disk_bytes'] > 0,
@@ -502,7 +502,7 @@ def extract_performance_metrics_from_query_summary(profiler_data: Dict[str, Any]
             'has_data_skew': False  # 詳細情報がないため判定不可
         }
         
-        # リモート読み込み比率の計算
+        # Calculate remote read ratio
         if overall_metrics['read_bytes'] > 0:
             bottleneck_indicators['remote_read_ratio'] = overall_metrics['read_remote_bytes'] / overall_metrics['read_bytes']
         
@@ -520,10 +520,10 @@ def extract_performance_metrics_from_query_summary(profiler_data: Dict[str, Any]
             'plans_state': query_data.get('plansState', '')
         }
         
-        # 詳細なパフォーマンス洞察を計算（後でnode_metricsと一緒に再計算）
+        # Calculate detailed performance insights (recalculated later with node_metrics)
         performance_insights = calculate_performance_insights_from_metrics(overall_metrics, None)
         
-        # 擬似的なノードメトリクス（サマリー情報から生成）
+        # Pseudo node metrics (generated from summary information)
         summary_node = {
             'node_id': 'summary_node',
             'name': f'Query Execution Summary ({query_data.get("statementType", "SQL")})',
@@ -550,7 +550,7 @@ def extract_performance_metrics_from_query_summary(profiler_data: Dict[str, Any]
             'performance_insights': performance_insights
         }
         
-        # 完全なmetricsでperformance_insightsを再計算
+        # Recalculate performance_insights with complete metrics
         complete_metrics = {
             'overall_metrics': overall_metrics,
             'node_metrics': [summary_node]
@@ -591,7 +591,7 @@ def extract_performance_metrics(profiler_data: Dict[str, Any]) -> Dict[str, Any]
     """
     Extract bottleneck analysis metrics from SQL profiler data (supports multiple formats)
     """
-    # データ形式を検出
+    # Detect data format
     data_format = detect_data_format(profiler_data)
     
     print(f"🔍 Detected data format: {data_format}")
@@ -600,7 +600,7 @@ def extract_performance_metrics(profiler_data: Dict[str, Any]) -> Dict[str, Any]
         print("📊 Processing as Databricks SQL query summary format...")
         result = extract_performance_metrics_from_query_summary(profiler_data)
         if result:
-            # Liquid Clustering分析を追加（制限付き）
+            # Add Liquid Clustering analysis (with limitations)
             try:
                 result["liquid_clustering_analysis"] = analyze_liquid_clustering_opportunities(profiler_data, result)
             except Exception as e:
@@ -609,13 +609,13 @@ def extract_performance_metrics(profiler_data: Dict[str, Any]) -> Dict[str, Any]
         return result
     elif data_format == 'sql_profiler':
         print("📊 Processing as SQL profiler detailed format...")
-        # 既存のSQLプロファイラー形式の処理を継続
+        # Continue processing existing SQL profiler format
         pass
     else:
         print(f"⚠️ Unknown data format: {data_format}")
         return {}
     
-    # 既存のSQLプロファイラー形式の処理
+    # Processing existing SQL profiler format
     metrics = {
         "query_info": {},
         "overall_metrics": {},
@@ -727,7 +727,7 @@ def extract_performance_metrics(profiler_data: Dict[str, Any]) -> Dict[str, Any]
                         node_metric['detailed_metrics'] = detailed_metrics
                         metrics["node_metrics"].append(node_metric)
     
-    # ボトルネック指標の計算
+    # Calculate bottleneck indicators
     metrics["bottleneck_indicators"] = calculate_bottleneck_indicators(metrics)
     
     # Liquid Clustering分析
@@ -9916,7 +9916,7 @@ def save_optimized_sql_files(original_query: str, optimized_result: str, metrics
     optimized_result_main_content = optimized_result
     
     if isinstance(optimized_result, list):
-        # ファイル保存用は人間に読みやすい形式に変換
+        # Convert to human-readable format for file saving
         optimized_result_for_file = format_thinking_response(optimized_result)
         # SQL抽出用は主要コンテンツのみを使用
         optimized_result_main_content = extract_main_content_from_thinking_response(optimized_result)
@@ -12623,7 +12623,7 @@ elif original_query_for_explain and original_query_for_explain.strip():
                 optimized_result = retry_result.get('optimized_result', '')
                 final_query = retry_result.get('final_query', original_query_for_explain)
                 
-                # ファイル保存: final_query（成功したクエリ）をSQLファイルに、optimized_result（元のLLMレスポンス）をレポートに使用
+                # File saving: final_query (successful query) to SQL file, optimized_result (original LLM response) to report
                 performance_comparison = retry_result.get('performance_comparison')
                 best_attempt_number = retry_result.get('best_result', {}).get('attempt_num')  # 🎯 ベスト試行番号を取得
                 saved_files = save_optimized_sql_files(
