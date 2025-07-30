@@ -2148,7 +2148,7 @@ def extract_liquid_clustering_data(profiler_data: Dict[str, Any], metrics: Dict[
             "data_selectivity": overall_filter_rate,
             "avg_file_size_mb": (overall_metrics.get('read_bytes', 0) / 1024 / 1024) / max(overall_metrics.get('read_files_count', 1), 1),
             "avg_partition_size_mb": (overall_metrics.get('read_bytes', 0) / 1024 / 1024) / max(overall_metrics.get('read_partitions_count', 1), 1),
-            "note": "詳細なテーブル情報はSQLクエリサマリー形式では利用不可。メトリクスベース分析を実行。",
+            "note": "Detailed table information is not available in SQL query summary format. Executing metrics-based analysis.",
             "current_clustering_keys": [],  # 現在のクラスタリングキー
             "filter_info": {  # フィルタ率情報を追加
                 "filter_rate": overall_filter_rate,
@@ -2186,7 +2186,7 @@ def extract_liquid_clustering_data(profiler_data: Dict[str, Any], metrics: Dict[
             "scan_nodes_count": len(extracted_data["scan_nodes"]),
             "join_nodes_count": 0,
             "filter_nodes_count": 0,
-            "analysis_limitation": "SQLクエリサマリー形式のため詳細分析が制限されています"
+            "analysis_limitation": "Detailed analysis is limited due to SQL query summary format"
         }
         
         print(f"✅ Limited data extraction completed: {extracted_data['metadata_summary']}")
@@ -2431,25 +2431,25 @@ def analyze_liquid_clustering_opportunities(profiler_data: Dict[str, Any], metri
     # 抽出したカラム情報のサマリー作成（上位5個まで）
     filter_summary = []
     for i, item in enumerate(extracted_data["filter_columns"][:5]):
-        filter_summary.append(f"  {i+1}. {item['expression']} (ノード: {item['node_name']})")
+        filter_summary.append(f"  {i+1}. {item['expression']} (node: {item['node_name']})")
     
     join_summary = []
     for i, item in enumerate(extracted_data["join_columns"][:5]):
-        join_summary.append(f"  {i+1}. {item['expression']} (タイプ: {item['key_type']}, ノード: {item['node_name']})")
+        join_summary.append(f"  {i+1}. {item['expression']} (type: {item['key_type']}, node: {item['node_name']})")
     
     groupby_summary = []
     for i, item in enumerate(extracted_data["groupby_columns"][:5]):
-        groupby_summary.append(f"  {i+1}. {item['expression']} (ノード: {item['node_name']})")
+        groupby_summary.append(f"  {i+1}. {item['expression']} (node: {item['node_name']})")
     
     aggregate_summary = []
     for i, item in enumerate(extracted_data["aggregate_columns"][:5]):
-        aggregate_summary.append(f"  {i+1}. {item['expression']} (ノード: {item['node_name']})")
+        aggregate_summary.append(f"  {i+1}. {item['expression']} (node: {item['node_name']})")
     
     # テーブル情報のサマリー（現在のクラスタリングキー情報とフィルタ率を含む）
     table_summary = []
     for table_name, table_info in extracted_data["table_info"].items():
         current_keys = table_info.get('current_clustering_keys', [])
-        current_keys_str = ', '.join(current_keys) if current_keys else '設定なし'
+        current_keys_str = ', '.join(current_keys) if current_keys else 'Not configured'
         
         # フィルタ率情報を追加
         filter_info = table_info.get('filter_info', {})
@@ -2462,17 +2462,17 @@ def analyze_liquid_clustering_opportunities(profiler_data: Dict[str, Any], metri
         pruned_gb = files_pruned_bytes / (1024**3) if files_pruned_bytes > 0 else 0
         
         if filter_info.get('has_filter_metrics', False):
-            filter_str = f", フィルタ率: {filter_rate*100:.1f}% (読み込み: {read_gb:.2f}GB, プルーン: {pruned_gb:.2f}GB)"
+            filter_str = f", filter rate: {filter_rate*100:.1f}% (read: {read_gb:.2f}GB, pruned: {pruned_gb:.2f}GB)"
         else:
-            filter_str = ", フィルタ率: 情報なし"
+            filter_str = ", filter rate: no information"
         
-        table_summary.append(f"  - {table_name} (ノード: {table_info['node_name']}, 現在のクラスタリングキー: {current_keys_str}{filter_str})")
+        table_summary.append(f"  - {table_name} (node: {table_info['node_name']}, current clustering key: {current_keys_str}{filter_str})")
     
     # スキャンノードのパフォーマンス情報
     scan_performance = []
     for scan in extracted_data["scan_nodes"]:
         efficiency = scan['rows'] / max(scan['duration_ms'], 1)
-        scan_performance.append(f"  - {scan['name']}: {scan['rows']:,}行, {scan['duration_ms']:,}ms, 効率={efficiency:.1f}行/ms")
+        scan_performance.append(f"  - {scan['name']}: {scan['rows']:,} rows, {scan['duration_ms']:,}ms, efficiency={efficiency:.1f} rows/ms")
 
     clustering_prompt = f"""
 You are a Databricks Liquid Clustering expert. Please analyze the following SQL profiler data and provide optimal Liquid Clustering recommendations.
