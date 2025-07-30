@@ -568,18 +568,18 @@ def extract_performance_metrics_from_query_summary(profiler_data: Dict[str, Any]
             'raw_profiler_data': profiler_data,
             'performance_insights': performance_insights,  # 詳細なパフォーマンス洞察を追加
             'analysis_capabilities': [
-                'メトリクスベースのボトルネック分析（キャッシュ効率、フィルタ率、Photon効率）',
-                'リソース使用状況分析（スピル、並列化効率、スループット）',
-                'パフォーマンス指標計算（ファイル効率、パーティション効率）',
-                'ポテンシャルボトルネック特定（メトリクスベース）'
+                'Metrics-based bottleneck analysis (cache efficiency, filter rate, Photon efficiency)',
+                'Resource usage analysis (spill, parallelization efficiency, throughput)',
+                'Performance metrics calculation (file efficiency, partition efficiency)',
+                'Potential bottleneck identification (metrics-based)'
             ],
             'analysis_limitations': [
-                '詳細な実行プラン情報（ノード、エッジ）が利用できません',
-                'ステージ別メトリクスが利用できません', 
-                'BROADCAST分析は基本的な推定のみ可能',
-                'Liquid Clustering分析は一般的な推奨のみ可能',
-                'データスキュー検出は平均値ベースの推定のみ',
-                'クエリ構造の詳細解析は行いません（メトリクス重視アプローチ）'
+                'Detailed execution plan information (nodes, edges) is not available',
+                'Stage-level metrics are not available', 
+                'BROADCAST analysis is limited to basic estimation only',
+                'Liquid Clustering analysis provides general recommendations only',
+                'Data skew detection is based on average-value estimation only',
+                'Detailed query structure analysis is not performed (metrics-focused approach)'
             ]
         }
         
@@ -1436,7 +1436,7 @@ def format_filter_rate_display(filter_result: Dict[str, Any]) -> str:
     files_read_gb = filter_result["files_read_bytes"] / (1024 * 1024 * 1024)
     files_pruned_gb = filter_result["files_pruned_bytes"] / (1024 * 1024 * 1024)
     
-    return f"📂 フィルタ率: {filter_rate:.1%} (読み込み: {files_read_gb:.2f}GB, プルーン: {files_pruned_gb:.2f}GB)"
+    return f"📂 Filter rate: {filter_rate:.1%} (read: {files_read_gb:.2f}GB, pruned: {files_pruned_gb:.2f}GB)"
 
 def extract_detailed_bottleneck_analysis(extracted_metrics: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -1606,9 +1606,9 @@ def extract_detailed_bottleneck_analysis(extracted_metrics: Dict[str, Any]) -> D
                     "node_id": node_analysis["node_id"],
                     "attributes": shuffle_attributes,
                     "suggested_sql": f"REPARTITION({suggested_partitions}, {repartition_columns})",
-                    "reason": f"スピル({node_analysis['spill_gb']:.2f}GB)改善",
+                    "reason": f"Spill({node_analysis['spill_gb']:.2f}GB) improvement",
                     "priority": "HIGH",
-                    "estimated_improvement": "大幅な性能改善が期待",
+                    "estimated_improvement": "Significant performance improvement expected",
 
                 }
                 detailed_analysis["shuffle_optimization_hints"].append(repartition_hint)
@@ -1661,14 +1661,14 @@ def extract_detailed_bottleneck_analysis(extracted_metrics: Dict[str, Any]) -> D
         detailed_analysis["performance_recommendations"].append({
             "type": "memory_optimization",
             "priority": "CRITICAL",
-            "description": f"大量スピル({detailed_analysis['spill_analysis']['total_spill_gb']:.1f}GB)検出: メモリ設定とパーティショニング戦略の見直しが必要"
+            "description": f"Large spill({detailed_analysis['spill_analysis']['total_spill_gb']:.1f}GB) detected: Memory configuration and partitioning strategy review required"
         })
     
     if len(detailed_analysis["shuffle_optimization_hints"]) > 0:
         detailed_analysis["performance_recommendations"].append({
             "type": "shuffle_optimization", 
             "priority": "HIGH",
-            "description": f"{len(detailed_analysis['shuffle_optimization_hints'])}個のスピル発生Shuffleノードでメモリ最適化が必要"
+            "description": f"Memory optimization required for {len(detailed_analysis['shuffle_optimization_hints'])} shuffle nodes with spill occurrence"
         })
     
     if detailed_analysis["skew_analysis"]["total_skewed_partitions"] > 10:
@@ -2001,15 +2001,15 @@ def calculate_performance_insights_from_metrics(overall_metrics: Dict[str, Any],
     # 6. ボトルネック指標
     bottlenecks = []
     if cache_hit_ratio < 0.3:
-        bottlenecks.append('低キャッシュ効率')
+        bottlenecks.append('Low cache efficiency')
     if read_remote_bytes / max(read_bytes, 1) > 0.8:
-        bottlenecks.append('高リモート読み込み比率')
+        bottlenecks.append('High remote read ratio')
     if photon_efficiency < 0.5 and photon_time > 0:
-        bottlenecks.append('低Photon効率')
+        bottlenecks.append('Low Photon efficiency')
     if spill_bytes > 0:
-        bottlenecks.append('メモリスピル発生')
+        bottlenecks.append('Memory spill occurring')
     if insights['data_efficiency']['data_selectivity'] < 0.2:
-        bottlenecks.append('低フィルタ効率')
+        bottlenecks.append('Low filter efficiency')
     
     insights['potential_bottlenecks'] = bottlenecks
     
@@ -3492,7 +3492,7 @@ def _call_databricks_llm(prompt: str) -> str:
         except Exception:
             token = os.environ.get('DATABRICKS_TOKEN')
             if not token:
-                return "❌ Databricksトークンの取得に失敗しました。環境変数DATABRICKS_TOKENを設定してください。"
+                return "❌ Failed to obtain Databricks token. Please set the environment variable DATABRICKS_TOKEN."
         
         # ワークスペースURLの取得
         try:
@@ -3598,7 +3598,7 @@ def _call_openai_llm(prompt: str) -> str:
         api_key = config["api_key"] or os.environ.get('OPENAI_API_KEY')
         
         if not api_key:
-            return "❌ OpenAI APIキーが設定されていません。LLM_CONFIG['openai']['api_key']または環境変数OPENAI_API_KEYを設定してください。"
+            return "❌ OpenAI API key is not configured. Please set LLM_CONFIG['openai']['api_key'] or environment variable OPENAI_API_KEY."
         
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -3633,7 +3633,7 @@ def _call_azure_openai_llm(prompt: str) -> str:
         api_key = config["api_key"] or os.environ.get('AZURE_OPENAI_API_KEY')
         
         if not api_key or not config["endpoint"] or not config["deployment_name"]:
-            return "❌ Azure OpenAI設定が不完全です。api_key、endpoint、deployment_nameを設定してください。"
+            return "❌ Azure OpenAI configuration is incomplete. Please set api_key, endpoint, and deployment_name."
         
         endpoint_url = f"{config['endpoint']}/openai/deployments/{config['deployment_name']}/chat/completions?api-version={config['api_version']}"
         
