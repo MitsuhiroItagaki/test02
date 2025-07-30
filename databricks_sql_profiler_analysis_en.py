@@ -12825,39 +12825,39 @@ def refine_report_content_with_llm(report_content: str) -> str:
 # - 評価例: 「Photon利用率: XX% (評価: 良好)」
 # """
     
-    refinement_prompt = f"""あなたは技術文書の編集者です。以下のDatabricks SQLパフォーマンス分析レポートを、読みやすく簡潔に推敲してください。
+    refinement_prompt = f"""You are a technical document editor. Please refine the following Databricks SQL performance analysis report to make it readable and concise.
 # 
-# 【推敲の要件】
-# 1. 全体的な構成を整理し、情報を論理的に配置する
-# 2. 冗長な表現を削除し、簡潔で分かりやすい表現に修正する
-# 3. 重要な情報が埋もれないよう、適切な見出しレベルで構造化する
-# 4. 専門用語は残しつつ、分かりやすい説明を追加する
-# 5. 数値データやメトリクスは保持する
-# 6. 実用的な推奨事項を明確に提示する
+# 【Refinement Requirements】
+# 1. Organize the overall structure and arrange information logically
+# 2. Remove redundant expressions and modify to concise, understandable expressions
+# 3. Structure with appropriate heading levels so important information doesn't get buried
+# 4. Keep technical terms while adding understandable explanations
+# 5. Preserve numerical data and metrics
+# 6. Clearly present practical recommendations
 # 
-# 【🚨 絶対に削除・変更してはいけない重要情報】
-# - **現在のクラスタリングキー情報**: 「現在のクラスタリングキー: XX」または「設定なし」表示
-# - **フィルタ率情報**: 「フィルタ率: X.X% (読み込み: XX.XXGB, プルーン: XX.XXGB)」形式
-# - **パーセンテージ計算**: 各処理の「全体の○○%」表示（並列実行を考慮した正確な計算結果）
-# - **推奨vs現在の比較分析**: 推奨クラスタリングキーと現在のキーの対比情報
-# - **具体的数値メトリクス**: 実行時間、データ読み込み量、スピル量、利用率等
-# - **SQL実装例**: ALTER TABLE構文、CLUSTER BY文、ヒント句等の具体例
-# - **テーブル別詳細情報**: 各テーブルのノード情報、フィルタ効率、推奨事項
+# 【🚨 Critical Information That Must NOT Be Deleted or Modified】
+# - **Current clustering key information**: Display "Current clustering key: XX" or "Not configured"
+# - **Filter rate information**: Format "Filter rate: X.X% (read: XX.XXGB, pruned: XX.XXGB)"
+# - **Percentage calculations**: Display "XX% of total" for each process (accurate calculations considering parallel execution)
+# - **Recommended vs current comparison analysis**: Comparison information between recommended clustering keys and current keys
+# - **Specific numerical metrics**: Execution time, data read volume, spill volume, utilization rates, etc.
+# - **SQL implementation examples**: Specific examples of ALTER TABLE syntax, CLUSTER BY statements, hint clauses, etc.
+# - **Table-specific detailed information**: Node information, filter efficiency, and recommendations for each table
 # 
 # {photon_evaluation_instruction}
 # 
-# 【現在のレポート内容】
+# 【Current Report Content】
 # {report_content}
 # 
-# 【出力要件】
-# - 推敲されたレポートをmarkdown形式で出力
-# - 技術情報は維持しつつ、可読性を向上させる
-# - 重要なポイントを強調し、アクションプランを明確にする
-# - Photon利用率の評価を明確に表示する
-# - **必須**: 現在のクラスタリングキー情報とフィルタ率情報を完全に保持
-# - **必須**: パーセンテージ計算値は元の正確な数値を使用
-# - **必須**: テーブル別の詳細分析情報（現在のキー、推奨キー、フィルタ率）を削除しない
-# - **必須**: SQL実装例（ALTER TABLE、CLUSTER BY等）は完全な形で保持
+# 【Output Requirements】
+# - Output refined report in markdown format
+# - Maintain technical information while improving readability
+# - Emphasize important points and clarify action plans
+# - Clearly display Photon utilization rate evaluation
+# - **Required**: Completely preserve current clustering key information and filter rate information
+# - **Required**: Use original accurate numerical values for percentage calculations
+# - **Required**: Do not delete detailed analysis information by table (current key, recommended key, filter rate)
+# - **Required**: Preserve SQL implementation examples (ALTER TABLE, CLUSTER BY, etc.) in complete form
 # """
     
     try:
