@@ -11683,16 +11683,16 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
 
 def execute_explain_with_retry_logic(original_query: str, analysis_result: str, metrics: Dict[str, Any], max_retries: int = 2) -> Dict[str, Any]:
     """
-    EXPLAIN実行とエラー修正の再試行ロジック（構文エラー専用）
-    最大2回まで自動修正を試行し、失敗時は元クエリを使用
+    EXPLAIN execution and error correction retry logic (syntax errors only)
+    Attempts automatic correction up to max_retries times, uses original query on failure
     """
     from datetime import datetime
     
-    print(f"\n🔄 EXPLAIN実行と自動エラー修正（最大{max_retries}回試行）")
+    print(f"\n🔄 EXPLAIN execution and automatic error correction (max {max_retries} attempts)")
     print("=" * 60)
     
-    # 初回の最適化クエリ生成
-    print("🤖 ステップ1: 初回最適化クエリ生成")
+    # Initial optimization query generation
+    print("🤖 Step 1: Initial optimization query generation")
     optimized_query = generate_optimized_query_with_llm(original_query, analysis_result, metrics)
     
     # 🐛 DEBUG: 単体最適化クエリを保存（反復最適化以外のパス）
@@ -12503,12 +12503,12 @@ elif original_query_for_explain and original_query_for_explain.strip():
             else:
                 analysis_result_str = str(current_analysis_result)
             
-            # 🔍 ステップ1: オリジナルクエリのEXPLAIN実行（事前修正付き）
-            print("\n📋 ステップ1: オリジナルクエリのEXPLAIN実行（Photon対応状況分析）")
+            # 🔍 Step 1: Original query EXPLAIN execution (with pre-correction)
+            print("\n📋 Step 1: Original query EXPLAIN execution (Photon compatibility analysis)")
             print("-" * 60)
             
-            # 🎯 元のクエリをそのまま保存（LLMによる修正に完全依存）
-            print("📋 元のクエリをそのまま使用: LLMによる高度な修正に依存")
+            # 🎯 Save the original query as-is (relying completely on LLM correction)
+            print("📋 Using original query as-is: Relying on advanced LLM correction")
             original_query_validated = original_query_for_explain
             
             # 🎯 元クエリをグローバル変数として保存（重複処理防止）
@@ -12573,12 +12573,12 @@ elif original_query_for_explain and original_query_for_explain.strip():
                     print("❌ LLMによる元クエリ修正失敗")
             
             if 'explain_file' in original_explain_result:
-                print(f"✅ オリジナルクエリのEXPLAIN結果を保存: {original_explain_result['explain_file']}")
+                print(f"✅ Saved original query EXPLAIN result: {original_explain_result['explain_file']}")
             if 'plan_lines' in original_explain_result:
-                print(f"📊 オリジナルクエリ実行プラン行数: {original_explain_result['plan_lines']:,}")
+                print(f"📊 Original query execution plan lines: {original_explain_result['plan_lines']:,}")
             
-            # 🚀 ステップ2: 新しい反復的最適化処理: 悪化原因分析による最大3回の改善試行
-            print("\n📋 ステップ2: 反復的LLM最適化 & パフォーマンス悪化分析（最大3回改善試行）")
+            # 🚀 Step 2: New iterative optimization process: up to 3 improvement attempts with degradation cause analysis
+            print("\n📋 Step 2: Iterative LLM optimization & performance degradation analysis (max 3 improvement attempts)")
             print("-" * 60)
             max_optimization_attempts = globals().get('MAX_OPTIMIZATION_ATTEMPTS', 3)
             retry_result = execute_iterative_optimization_with_degradation_analysis(
