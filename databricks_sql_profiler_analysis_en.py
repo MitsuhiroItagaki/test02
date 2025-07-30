@@ -90,7 +90,7 @@ DEBUG_ENABLED = 'Y'
 
 def save_debug_query_trial(query: str, attempt_num: int, trial_type: str, query_id: str = None, error_info: str = None) -> str:
     """
-    DEBUG_ENABLED=Y時に最適化試行中のクエリを試行ごとに保存
+    Save queries under optimization attempt by attempt when DEBUG_ENABLED=Y
     
     Args:
         query: 生成されたクエリ
@@ -118,7 +118,7 @@ def save_debug_query_trial(query: str, attempt_num: int, trial_type: str, query_
         filename = f"debug_trial_{attempt_num:02d}_{trial_type}_{timestamp}.sql"
         
         # メタデータ情報の準備
-        metadata_header = f"""-- 🐛 DEBUG: 最適化試行クエリ (DEBUG_ENABLED=Y)
+        metadata_header = f"""-- 🐛 DEBUG: Optimization trial query (DEBUG_ENABLED=Y)
 -- 📋 試行番号: {attempt_num}
 -- 🎯 試行タイプ: {trial_type}
 -- 🕐 生成時刻: {timestamp}
@@ -10504,7 +10504,7 @@ def generate_optimized_query_with_error_feedback(original_query: str, analysis_r
 
     # 🚨 NEW: エラーメッセージ解析による詳細修正指示生成
     def generate_specific_error_guidance(error_message: str) -> str:
-        """具体的なエラーメッセージに基づいた詳細修正指示を生成"""
+        """Generate detailed correction instructions based on specific error messages"""
         guidance = ""
         
         if "AMBIGUOUS_REFERENCE" in error_message.upper():
@@ -12767,7 +12767,7 @@ print("\n📝 レポート推敲処理")
 print("-" * 40)
 # 
 def find_latest_report_file() -> str:
-    """最新のレポートファイルを見つける"""
+    """Find the latest report file"""
     import os
     import glob
     
@@ -12783,7 +12783,7 @@ def find_latest_report_file() -> str:
     return latest_file
 # 
 def refine_report_content_with_llm(report_content: str) -> str:
-    """LLMを使ってレポートを推敲する"""
+    """Refine report using LLM"""
     
     # LLMプロバイダーの設定確認
     if not LLM_CONFIG or not LLM_CONFIG.get('provider'):
@@ -12914,7 +12914,7 @@ def refine_report_content_with_llm(report_content: str) -> str:
         return report_content
 # 
 def save_refined_report(refined_content: str, original_filename: str) -> str:
-    """推敲されたレポートを保存"""
+    """Save refined report"""
     from datetime import datetime
     
     # 推敲版のファイル名を生成
@@ -12934,7 +12934,7 @@ def save_refined_report(refined_content: str, original_filename: str) -> str:
         return None
 # 
 def finalize_report_files(original_filename: str, refined_filename: str) -> str:
-    """DEBUG_ENABLED設定に基づいてファイル処理を実行"""
+    """Execute file processing based on DEBUG_ENABLED setting"""
     import os
     
     # DEBUG_ENABLED設定を確認
