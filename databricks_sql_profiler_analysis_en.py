@@ -2925,7 +2925,7 @@ def generate_liquid_clustering_sql_implementations(clustering_analysis: Dict[str
     
     return sql_content
 
-print("✅ 関数定義完了: analyze_liquid_clustering_opportunities, save_liquid_clustering_analysis")
+print("✅ Function definition completed: analyze_liquid_clustering_opportunities, save_liquid_clustering_analysis")
 
 # COMMAND ----------
 
@@ -2953,7 +2953,7 @@ def analyze_bottlenecks_with_llm(metrics: Dict[str, Any]) -> str:
     """
     from datetime import datetime
     
-    print("📊 包括的パフォーマンス分析レポート（EXPLAIN+EXPLAIN COST統合）を生成中...")
+    print("📊 Generating comprehensive performance analysis report (EXPLAIN+EXPLAIN COST integration)...")
     
     # === EXPLAIN + EXPLAIN COST結果の読み込み ===
     explain_content = ""
@@ -2967,7 +2967,7 @@ def analyze_bottlenecks_with_llm(metrics: Dict[str, Any]) -> str:
         import glob
         import os
         
-        print("🔍 ボトルネック分析用: EXPLAIN + EXPLAIN COST結果ファイルを検索中...")
+        print("🔍 For bottleneck analysis: Searching EXPLAIN + EXPLAIN COST result files...")
         
         # 最新のEXPLAIN結果ファイルを検索
         explain_original_files = glob.glob("output_explain_original_*.txt")
@@ -2979,7 +2979,7 @@ def analyze_bottlenecks_with_llm(metrics: Dict[str, Any]) -> str:
             try:
                 with open(latest_explain_file, 'r', encoding='utf-8') as f:
                     explain_content = f.read()
-                    print(f"✅ ボトルネック分析用EXPLAIN結果を読み込み: {latest_explain_file}")
+                    print(f"✅ Loaded EXPLAIN results for bottleneck analysis: {latest_explain_file}")
                 
                 # Physical Planの抽出
                 if "== Physical Plan ==" in explain_content:
@@ -2995,7 +2995,7 @@ def analyze_bottlenecks_with_llm(metrics: Dict[str, Any]) -> str:
                     photon_explanation = explain_content[photon_start:].strip()
                     
             except Exception as e:
-                print(f"⚠️ ボトルネック分析用EXPLAIN結果の読み込みに失敗: {str(e)}")
+                print(f"⚠️ Failed to load EXPLAIN results for bottleneck analysis: {str(e)}")
         
         # 最新のEXPLAIN COST結果ファイルを検索
         cost_original_files = glob.glob("output_explain_cost_original_*.txt")
@@ -3007,14 +3007,14 @@ def analyze_bottlenecks_with_llm(metrics: Dict[str, Any]) -> str:
             try:
                 with open(latest_cost_file, 'r', encoding='utf-8') as f:
                     explain_cost_content = f.read()
-                    print(f"💰 ボトルネック分析用EXPLAIN COST結果を読み込み: {latest_cost_file}")
+                    print(f"💰 Loaded EXPLAIN COST results for bottleneck analysis: {latest_cost_file}")
                 
                 # 統計情報の抽出
                 cost_statistics = extract_cost_statistics_from_explain_cost(explain_cost_content)
-                print(f"📊 ボトルネック分析用統計情報を抽出: {len(cost_statistics)} 文字")
+                print(f"📊 Extracted statistics for bottleneck analysis: {len(cost_statistics)} characters")
                     
             except Exception as e:
-                print(f"⚠️ ボトルネック分析用EXPLAIN COST結果の読み込みに失敗: {str(e)}")
+                print(f"⚠️ Failed to load EXPLAIN COST results for bottleneck analysis: {str(e)}")
         
         if not explain_files and not cost_files:
             # フォールバック: 古いファイル名パターンもチェック
@@ -3039,7 +3039,7 @@ def analyze_bottlenecks_with_llm(metrics: Dict[str, Any]) -> str:
                 except Exception as e:
                     print(f"⚠️ 古い形式EXPLAIN結果の読み込みに失敗: {str(e)}")
             else:
-                print("⚠️ ボトルネック分析: EXPLAIN・EXPLAIN COST結果ファイルが見つかりません")
+                print("⚠️ Bottleneck analysis: EXPLAIN・EXPLAIN COST result files not found")
     
     # レポート生成時刻
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -3091,20 +3091,20 @@ def analyze_bottlenecks_with_llm(metrics: Dict[str, Any]) -> str:
     
     if task_total_time_ms > 0:
         total_time_ms = task_total_time_ms
-        print(f"✅ デバッグ: 並列実行対応 - task_total_time_ms使用: {total_time_ms:,} ms ({total_time_ms/3600000:.1f}時間)")
+        print(f"✅ Debug: Parallel execution support - using task_total_time_ms: {total_time_ms:,} ms ({total_time_ms/3600000:.1f} hours)")
     elif total_time_ms <= 0:
         # execution_time_msを次の優先度で使用
         execution_time_ms = overall_metrics.get('execution_time_ms', 0)
         if execution_time_ms > 0:
             total_time_ms = execution_time_ms
-            print(f"⚠️ デバッグ: task_total_time_ms利用不可、execution_time_ms使用: {total_time_ms} ms")
+            print(f"⚠️ Debug: task_total_time_ms unavailable, using execution_time_ms: {total_time_ms} ms")
         else:
             # 最終フォールバック: 全ノードの合計時間
             max_node_time = max([node['key_metrics'].get('durationMs', 0) for node in all_sorted_nodes], default=1)
             total_time_ms = int(max_node_time * 1.2)
-            print(f"⚠️ デバッグ: 最終フォールバック - 推定時間使用: {total_time_ms} ms")
+            print(f"⚠️ Debug: Final fallback - using estimated time: {total_time_ms} ms")
     
-    print(f"📊 デバッグ: パーセンテージ計算に使用する全体時間: {total_time_ms:,} ms ({total_time_ms/1000:.1f} sec)")
+    print(f"📊 Debug: Total time used for percentage calculation: {total_time_ms:,} ms ({total_time_ms/1000:.1f} sec)")
     
     critical_processes = []
     for i, node in enumerate(sorted_nodes):
@@ -3478,7 +3478,7 @@ def analyze_bottlenecks_with_llm(metrics: Dict[str, Any]) -> str:
     report_lines.append("---")
     report_lines.append(f"*レポート生成: {timestamp} | 分析エンジン: Databricks SQL Profiler + EXPLAIN統合*")
     
-    print("✅ 包括的パフォーマンス分析レポート（EXPLAIN+EXPLAIN COST統合）が完成しました")
+    print("✅ Comprehensive performance analysis report (EXPLAIN+EXPLAIN COST integration) completed")
     
     return "\n".join(report_lines)
 
@@ -3533,7 +3533,7 @@ def _call_databricks_llm(prompt: str) -> str:
                 if response.status_code == 200:
                     result = response.json()
                     analysis_text = result.get('choices', [{}])[0].get('message', {}).get('content', '')
-                    print("✅ ボトルネック分析が完了しました")
+                    print("✅ Bottleneck analysis completed")
                     return analysis_text
                 else:
                     error_msg = f"APIエラー: ステータスコード {response.status_code}"
@@ -3618,7 +3618,7 @@ def _call_openai_llm(prompt: str) -> str:
         if response.status_code == 200:
             result = response.json()
             analysis_text = result['choices'][0]['message']['content']
-            print("✅ OpenAI分析が完了しました")
+            print("✅ OpenAI analysis completed")
             return analysis_text
         else:
             return f"OpenAI APIエラー: ステータスコード {response.status_code}\n{response.text}"
@@ -3653,7 +3653,7 @@ def _call_azure_openai_llm(prompt: str) -> str:
         if response.status_code == 200:
             result = response.json()
             analysis_text = result['choices'][0]['message']['content']
-            print("✅ Azure OpenAI分析が完了しました")
+            print("✅ Azure OpenAI analysis completed")
             return analysis_text
         else:
             return f"Azure OpenAI APIエラー: ステータスコード {response.status_code}\n{response.text}"
@@ -3689,7 +3689,7 @@ def _call_anthropic_llm(prompt: str) -> str:
         if response.status_code == 200:
             result = response.json()
             analysis_text = result['content'][0]['text']
-            print("✅ Anthropic分析が完了しました")
+            print("✅ Anthropic analysis completed")
             return analysis_text
         else:
             return f"Anthropic APIエラー: ステータスコード {response.status_code}\n{response.text}"
@@ -3697,7 +3697,7 @@ def _call_anthropic_llm(prompt: str) -> str:
     except Exception as e:
         return f"Anthropic API呼び出しエラー: {str(e)}"
 
-print("✅ 関数定義完了: analyze_bottlenecks_with_llm")
+print("✅ Function definition completed: analyze_bottlenecks_with_llm")
 
 # COMMAND ----------
 
@@ -3714,7 +3714,7 @@ print("✅ 関数定義完了: analyze_bottlenecks_with_llm")
 # LLMボトルネック分析実行の準備
 provider = LLM_CONFIG["provider"]
 
-print(f"\n🤖 【{provider.upper()} LLM による SQLボトルネック分析を開始します】")
+print(f"\n🤖 【Starting SQL bottleneck analysis with {provider.upper()} LLM】")
 print("=" * 80)
 
 if provider == "databricks":
