@@ -10437,10 +10437,10 @@ def generate_improved_query_for_performance_degradation(original_query: str, ana
         elif provider == "azure_openai":
             improved_result = _call_azure_openai_llm(performance_improvement_prompt)
         elif provider == "anthropic":
-                          improved_result = _call_anthropic_llm(performance_improvement_prompt)
-          else:
-              error_msg = "⚠️ Configured LLM provider is not recognized"
-              print(f"❌ LLM performance improvement error: {error_msg}")
+            improved_result = _call_anthropic_llm(performance_improvement_prompt)
+        else:
+            error_msg = "⚠️ Configured LLM provider is not recognized"
+            print(f"❌ LLM performance improvement error: {error_msg}")
             return f"LLM_ERROR: {error_msg}"
         
         # LLMレスポンスのエラーチェック
@@ -11426,7 +11426,7 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                         print(f"   📄 スタックトレース: {traceback.format_exc()}")
                     performance_comparison = None
             else:
-                                    print("❌ EXPLAIN results also insufficient, performance evaluation impossible")
+                print("❌ EXPLAIN results also insufficient, performance evaluation impossible")
                 performance_comparison = None
         
         # 🚨 緊急修正: ロジック順序を修正（EXPLAIN COST成功判定を先に実行）
@@ -12158,7 +12158,7 @@ def execute_explain_and_save_to_file(original_query: str, query_type: str = "ori
             if pattern in explain_content.lower():
                 detected_error = pattern
                 error_source = "EXPLAIN"
-                                        print(f"❌ Error pattern detected in EXPLAIN result: '{pattern}'")
+                print(f"❌ Error pattern detected in EXPLAIN result: '{pattern}'")
                 break
         
         # 2. EXPLAIN COST結果のエラーチェック（EXPLAINでエラーが見つからない場合のみ）
@@ -12167,7 +12167,7 @@ def execute_explain_and_save_to_file(original_query: str, query_type: str = "ori
                 if pattern in explain_cost_content.lower():
                     detected_error = pattern
                     error_source = "EXPLAIN COST"
-                                            print(f"❌ Error pattern detected in EXPLAIN COST result: '{pattern}'")
+                    print(f"❌ Error pattern detected in EXPLAIN COST result: '{pattern}'")
                     break
         
         if not detected_error:
@@ -12305,7 +12305,7 @@ def execute_explain_and_save_to_file(original_query: str, query_type: str = "ori
         
     except Exception as e:
         error_message = str(e)
-                    print(f"❌ Failed to execute EXPLAIN or EXPLAIN COST statement: {error_message}")
+        print(f"❌ Failed to execute EXPLAIN or EXPLAIN COST statement: {error_message}")
         
         # 真の致命的エラー（リトライ不可能なエラー）のチェック
         truly_fatal_errors = [
