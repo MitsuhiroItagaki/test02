@@ -881,7 +881,7 @@ def get_meaningful_node_name(node: Dict[str, Any], extracted_metrics: Dict[str, 
                         # For "catalog.schema.table" format
                         parts = value.split('.')
                         if len(parts) >= 2 and not any(part.isdigit() for part in parts[-2:]):
-                            # フルパスを使用（catalog.schema.table）
+                            # Use full path (catalog.schema.table)
                             if len(parts) >= 3:
                                 table_name = '.'.join(parts)  # フルパス
                             else:
@@ -890,11 +890,11 @@ def get_meaningful_node_name(node: Dict[str, Any], extracted_metrics: Dict[str, 
                 if table_name:
                     break
     
-    # Data Source Scanの場合にテーブル名を表示
+    # Display table name for Data Source Scan
     if table_name and ('scan' in enhanced_name.lower() or 'data source' in enhanced_name.lower()):
-        # フルパス表示のために制限を緩和（60文字まで）
+        # Relax limits for full path display (up to 60 characters)
         if len(table_name) > 60:
-            # カタログ.スキーマ.テーブル形式の場合は中間を省略
+            # Abbreviate middle part for catalog.schema.table format
             parts = table_name.split('.')
             if len(parts) >= 3:
                 table_name = f"{parts[0]}.*.{parts[-1]}"
@@ -902,10 +902,10 @@ def get_meaningful_node_name(node: Dict[str, Any], extracted_metrics: Dict[str, 
                 table_name = table_name[:57] + "..."
         enhanced_name = f"Data Source Scan ({table_name})"
     elif 'scan' in enhanced_name.lower() and 'data source' in enhanced_name.lower():
-        # テーブル名が見つからない場合でも、より明確な名前に
+        # Use clearer name even when table name is not found
         enhanced_name = "Data Source Scan"
     
-    # Photon情報を追加
+    # Add Photon information
     if 'IS_PHOTON' in metadata_info and metadata_info['IS_PHOTON'] == 'true':
         if not enhanced_name.startswith('Photon'):
             enhanced_name = f"Photon {enhanced_name}"
@@ -915,10 +915,10 @@ def get_meaningful_node_name(node: Dict[str, Any], extracted_metrics: Dict[str, 
 def find_related_specific_nodes(target_node_id: str, nodes: list, edges: list) -> list:
     """Search for specific processing nodes related to the specified node"""
     
-    # エッジから関連ノードを特定
+    # Identify related nodes from edges
     related_node_ids = set()
     
-    # 直接接続されているノード
+    # Directly connected nodes
     for edge in edges:
         from_id = edge.get('fromId', '')
         to_id = edge.get('toId', '')
@@ -928,13 +928,13 @@ def find_related_specific_nodes(target_node_id: str, nodes: list, edges: list) -
         elif to_id == target_node_id:
             related_node_ids.add(from_id)
     
-    # 関連ノードの詳細を取得
+    # Get details of related nodes
     related_nodes = []
     for node in nodes:
         node_id = node.get('id', '')
         if node_id in related_node_ids:
             node_name = node.get('name', '')
-            # 具体的な処理名を持つノードのみ選択
+            # Select only nodes with specific process names
             if is_specific_process_name(node_name):
                 related_nodes.append(node)
     
@@ -953,12 +953,12 @@ def is_specific_process_name(name: str) -> bool:
     
     name_lower = name.lower()
     
-    # 具体的なキーワードを含む場合
+            # When containing specific keywords
     for keyword in specific_keywords:
         if keyword in name_lower:
             return True
     
-    # 汎用的なキーワードのみの場合は除外
+            # Exclude cases with only generic keywords
     for keyword in generic_keywords:
         if keyword in name_lower and len(name_lower.split()) <= 3:
             return False
@@ -970,7 +970,7 @@ def get_most_specific_process_name(nodes: list) -> str:
     if not nodes:
         return ""
     
-    # 優先順位: より具体的で意味のある処理名
+    # Priority: More specific and meaningful process names
     priority_keywords = [
         'columnar to row', 'row to columnar', 'filter', 'project',
         'hash join', 'broadcast join', 'sort merge join',
@@ -983,7 +983,7 @@ def get_most_specific_process_name(nodes: list) -> str:
             if keyword in node_name:
                 return node.get('name', '')
     
-    # フォールバック: 最初の具体的なノード名
+    # Fallback: First specific node name
     for node in nodes:
         node_name = node.get('name', '')
         if is_specific_process_name(node_name):
@@ -996,7 +996,7 @@ def get_most_specific_process_name_from_list(node_names: list) -> str:
     if not node_names:
         return ""
     
-    # 優先順位: より具体的で意味のある処理名
+    # Priority: More specific and meaningful process names
     priority_keywords = [
         'columnar to row', 'row to columnar', 'filter', 'project',
         'hash join', 'broadcast join', 'sort merge join',
@@ -1008,7 +1008,7 @@ def get_most_specific_process_name_from_list(node_names: list) -> str:
             if keyword in name.lower():
                 return name
     
-    # フォールバック: 最初の具体的なノード名
+    # Fallback: First specific node name
     for name in node_names:
         if is_specific_process_name(name):
             return name
@@ -1027,7 +1027,7 @@ def extract_shuffle_attributes(node: Dict[str, Any]) -> list:
     """
     shuffle_attributes = []
     
-    # metadataからSHUFFLE_ATTRIBUTESを検索
+    # Search for SHUFFLE_ATTRIBUTES from metadata
     metadata = node.get('metadata', [])
     if isinstance(metadata, list):
         for item in metadata:
@@ -1036,13 +1036,13 @@ def extract_shuffle_attributes(node: Dict[str, Any]) -> list:
                 item_label = item.get('label', '')
                 item_values = item.get('values', [])
                 
-                # keyとlabelの両方をチェック
+                # Check both key and label
                 if (item_key == 'SHUFFLE_ATTRIBUTES' or 
                     item_label == 'Shuffle attributes'):
                     if isinstance(item_values, list):
                         shuffle_attributes.extend(item_values)
     
-    # raw_metricsからも検索（labelもチェック）
+    # Search from raw_metrics as well (also check label)
     raw_metrics = node.get('metrics', [])
     if isinstance(raw_metrics, list):
         for metric in raw_metrics:
@@ -1056,7 +1056,7 @@ def extract_shuffle_attributes(node: Dict[str, Any]) -> list:
                     if isinstance(metric_values, list):
                         shuffle_attributes.extend(metric_values)
     
-    # detailed_metricsからも検索
+    # Search from detailed_metrics as well
     detailed_metrics = node.get('detailed_metrics', {})
     if isinstance(detailed_metrics, dict):
         for key, info in detailed_metrics.items():
@@ -1066,7 +1066,7 @@ def extract_shuffle_attributes(node: Dict[str, Any]) -> list:
                 if isinstance(values, list):
                     shuffle_attributes.extend(values)
     
-    # 重複を削除
+    # Remove duplicates
     return list(set(shuffle_attributes))
 
 def extract_cluster_attributes(node: Dict[str, Any]) -> list:
@@ -1081,7 +1081,7 @@ def extract_cluster_attributes(node: Dict[str, Any]) -> list:
     """
     cluster_attributes = []
     
-    # metadataからSCAN_CLUSTERSを検索
+    # Search for SCAN_CLUSTERS from metadata
     metadata = node.get('metadata', [])
     if isinstance(metadata, list):
         for item in metadata:
@@ -1090,13 +1090,13 @@ def extract_cluster_attributes(node: Dict[str, Any]) -> list:
                 item_label = item.get('label', '')
                 item_values = item.get('values', [])
                 
-                # keyとlabelの両方をチェック
+                # Check both key and label
                 if (item_key == 'SCAN_CLUSTERS' or 
                     item_label == 'Cluster attributes'):
                     if isinstance(item_values, list):
                         cluster_attributes.extend(item_values)
     
-    # raw_metricsからも検索（labelもチェック）
+    # Search from raw_metrics as well (also check label)
     raw_metrics = node.get('metrics', [])
     if isinstance(raw_metrics, list):
         for metric in raw_metrics:
@@ -1110,7 +1110,7 @@ def extract_cluster_attributes(node: Dict[str, Any]) -> list:
                     if isinstance(metric_values, list):
                         cluster_attributes.extend(metric_values)
     
-    # detailed_metricsからも検索
+    # Search from detailed_metrics as well
     detailed_metrics = node.get('detailed_metrics', {})
     if isinstance(detailed_metrics, dict):
         for key, info in detailed_metrics.items():
@@ -1120,7 +1120,7 @@ def extract_cluster_attributes(node: Dict[str, Any]) -> list:
                 if isinstance(values, list):
                     cluster_attributes.extend(values)
     
-    # 重複を削除
+    # Remove duplicates
     return list(set(cluster_attributes))
 
 def extract_parallelism_metrics(node: Dict[str, Any]) -> Dict[str, Any]:
