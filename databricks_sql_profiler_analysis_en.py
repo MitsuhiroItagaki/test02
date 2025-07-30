@@ -3839,35 +3839,35 @@ print()
 
 # COMMAND ----------
 
-# 📊 パフォーマンスメトリクスの抽出
+# 📊 Performance metrics extraction
 extracted_metrics = extract_performance_metrics(profiler_data)
-print("✅ パフォーマンスメトリクスを抽出しました")
+print("✅ Performance metrics extracted")
 
-# 抽出されたメトリクスの概要表示
+# Display extracted metrics overview
 print("\n" + "=" * 50)
-print("📈 抽出されたメトリクス概要")
+print("📈 Extracted Metrics Overview")
 print("=" * 50)
 
 query_info = extracted_metrics['query_info']
 overall_metrics = extracted_metrics['overall_metrics']
 bottleneck_indicators = extracted_metrics['bottleneck_indicators']
 
-print(f"🆔 クエリID: {query_info['query_id']}")
-print(f"📊 ステータス: {query_info['status']}")
-print(f"👤 実行ユーザー: {query_info['user']}")
-print(f"⏱️ 実行時間: {overall_metrics['total_time_ms']:,} ms ({overall_metrics['total_time_ms']/1000:.2f} sec)")
-print(f"💾 読み込みデータ: {overall_metrics['read_bytes']/1024/1024/1024:.2f} GB")
-print(f"📈 出力行数: {overall_metrics['rows_produced_count']:,} 行")
-print(f"📉 読み込み行数: {overall_metrics['rows_read_count']:,} 行")
-print(f"🎯 フィルタ率: {bottleneck_indicators.get('data_selectivity', 0):.4f} ({bottleneck_indicators.get('data_selectivity', 0)*100:.2f}%)")
-print(f"🔧 ステージ数: {len(extracted_metrics['stage_metrics'])}")
-print(f"🏗️ ノード数: {len(extracted_metrics['node_metrics'])}")
+print(f"🆔 Query ID: {query_info['query_id']}")
+print(f"📊 Status: {query_info['status']}")
+print(f"👤 Execution User: {query_info['user']}")
+print(f"⏱️ Execution Time: {overall_metrics['total_time_ms']:,} ms ({overall_metrics['total_time_ms']/1000:.2f} sec)")
+print(f"💾 Data Read: {overall_metrics['read_bytes']/1024/1024/1024:.2f} GB")
+print(f"📈 Output Rows: {overall_metrics['rows_produced_count']:,} rows")
+print(f"📉 Read Rows: {overall_metrics['rows_read_count']:,} rows")
+print(f"🎯 Filter Rate: {bottleneck_indicators.get('data_selectivity', 0):.4f} ({bottleneck_indicators.get('data_selectivity', 0)*100:.2f}%)")
+print(f"🔧 Stage Count: {len(extracted_metrics['stage_metrics'])}")
+print(f"🏗️ Node Count: {len(extracted_metrics['node_metrics'])}")
 
-# Liquid Clustering分析結果の表示
+# Display Liquid Clustering analysis results
 liquid_analysis = extracted_metrics['liquid_clustering_analysis']
 liquid_summary = liquid_analysis.get('summary', {})
-print(f"🗂️ Liquid Clustering対象テーブル数: {liquid_summary.get('tables_identified', 0)}")
-print(f"📊 高インパクトテーブル数: {liquid_summary.get('high_impact_tables', 0)}")
+print(f"🗂️ Liquid Clustering Target Tables: {liquid_summary.get('tables_identified', 0)}")
+print(f"📊 High Impact Tables: {liquid_summary.get('high_impact_tables', 0)}")
 
 # COMMAND ----------
 
@@ -3875,49 +3875,49 @@ print(f"📊 高インパクトテーブル数: {liquid_summary.get('high_impact
 # MAGIC ## 🔍 Bottleneck Indicator Details
 # MAGIC
 # MAGIC This cell performs the following processing:
-# MAGIC - Photon エンジンの利用状況とパフォーマンス分析
-# MAGIC - シャッフル操作と並列度の問題検出
-# MAGIC - 各種パフォーマンス指標の詳細表示
+# MAGIC - Photon engine usage and performance analysis
+# MAGIC - Shuffle operations and parallelism issue detection
+# MAGIC - Detailed display of various performance indicators
 
 # COMMAND ----------
 
-# 📋 ボトルネック指標の詳細表示
+# 📋 Detailed bottleneck indicator display
 print("\n" + "=" * 50)
-print("🔍 ボトルネック指標詳細")
+print("🔍 Bottleneck Indicator Details")
 print("=" * 50)
 
-# Photon関連指標
+# Photon-related indicators
 photon_enabled = overall_metrics.get('photon_enabled', False)
 photon_utilization_ratio = overall_metrics.get('photon_utilization_ratio', 0)
-photon_utilization = min(photon_utilization_ratio * 100, 100.0)  # 最大100%に制限
+photon_utilization = min(photon_utilization_ratio * 100, 100.0)  # Limit to max 100%
 photon_emoji = "✅" if photon_enabled and photon_utilization > 80 else "⚠️" if photon_enabled else "❌"
 
-# 利用率に関する詳細情報
+# Detailed information about utilization rate
 if photon_enabled:
     photon_total_ms = overall_metrics.get('photon_total_time_ms', 0)
     task_total_ms = overall_metrics.get('task_total_time_ms', 0)
-    print(f"{photon_emoji} Photonエンジン: 有効 (利用率: {photon_utilization:.1f}%)")
-    print(f"   📊 Photon実行時間: {photon_total_ms:,} ms | タスク合計時間: {task_total_ms:,} ms")
+    print(f"{photon_emoji} Photon Engine: Enabled (Utilization: {photon_utilization:.1f}%)")
+    print(f"   📊 Photon Execution Time: {photon_total_ms:,} ms | Total Task Time: {task_total_ms:,} ms")
 else:
-    print(f"{photon_emoji} Photonエンジン: 無効")
+    print(f"{photon_emoji} Photon Engine: Disabled")
 
-# 並列度・シャッフル関連指標
+# Parallelism and shuffle-related indicators
 shuffle_count = bottleneck_indicators.get('shuffle_operations_count', 0)
 has_shuffle_bottleneck = bottleneck_indicators.get('has_shuffle_bottleneck', False)
 has_low_parallelism = bottleneck_indicators.get('has_low_parallelism', False)
 low_parallelism_count = bottleneck_indicators.get('low_parallelism_stages_count', 0)
 
 shuffle_emoji = "🚨" if has_shuffle_bottleneck else "⚠️" if shuffle_count > 5 else "✅"
-print(f"{shuffle_emoji} シャッフル操作: {shuffle_count}回 ({'ボトルネックあり' if has_shuffle_bottleneck else '正常'})")
+print(f"{shuffle_emoji} Shuffle Operations: {shuffle_count} times ({'Bottleneck detected' if has_shuffle_bottleneck else 'Normal'})")
 
 parallelism_emoji = "🚨" if has_low_parallelism else "✅"
-print(f"{parallelism_emoji} 並列度: {'問題あり' if has_low_parallelism else '適切'} (低並列度ステージ: {low_parallelism_count}個)")
+print(f"{parallelism_emoji} Parallelism: {'Issues detected' if has_low_parallelism else 'Appropriate'} (Low parallelism stages: {low_parallelism_count})")
 
 print()
-print("📊 その他の指標:")
+print("📊 Other Indicators:")
 
 for key, value in bottleneck_indicators.items():
-    # 新しく追加した指標は上記で表示済みなのでスキップ
+    # Skip newly added indicators as they are already displayed above
     if key in ['shuffle_operations_count', 'has_shuffle_bottleneck', 'has_low_parallelism', 
                'low_parallelism_stages_count', 'total_shuffle_time_ms', 'shuffle_time_ratio',
                'slowest_shuffle_duration_ms', 'slowest_shuffle_node', 'low_parallelism_details',
@@ -3929,11 +3929,11 @@ for key, value in bottleneck_indicators.items():
         print(f"{emoji} {key}: {value:.3f} ({value*100:.1f}%)")
     elif 'bytes' in key and key != 'has_spill':
         if value > 0:
-            emoji = "💾" if value < 1024*1024*1024 else "⚠️"  # 1GB未満は普通、以上は注意
+            emoji = "💾" if value < 1024*1024*1024 else "⚠️"  # Normal if under 1GB, caution if over
             print(f"{emoji} {key}: {value:,} bytes ({value/1024/1024:.2f} MB)")
     elif key == 'has_spill':
         emoji = "❌" if not value else "⚠️"
-        print(f"{emoji} {key}: {'あり' if value else 'なし'}")
+        print(f"{emoji} {key}: {'Yes' if value else 'No'}")
     elif 'duration' in key:
         emoji = "⏱️"
         print(f"{emoji} {key}: {value:,} ms ({value/1000:.2f} sec)")
@@ -3946,41 +3946,41 @@ print()
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 💾 メトリクス保存と時間消費分析
+# MAGIC ## 💾 Metrics Storage and Time Consumption Analysis
 # MAGIC
-# MAGIC このセルでは以下の処理を実行します：
-# MAGIC - 抽出したメトリクスのJSON形式での保存
-# MAGIC - set型からlist型への変換処理
-# MAGIC - 最も時間がかかっている処理TOP10の詳細分析
-# MAGIC - 特定メトリクスベーススピル検出とAQEベーススキュー分析
+# MAGIC This cell performs the following processing:
+# MAGIC - Save extracted metrics in JSON format
+# MAGIC - Convert set types to list types
+# MAGIC - Detailed analysis of top 10 most time-consuming processes
+# MAGIC - Specific metrics-based spill detection and AQE-based skew analysis
 # MAGIC
-# MAGIC 💿 **スピル検出ロジック**:
-# MAGIC - ターゲットメトリクス: `"Sink - Num bytes spilled to disk due to memory pressure"`
-# MAGIC - 判定条件: 上記メトリクスの値 > 0 の場合にスピルありと判定
-# MAGIC - 検索対象: detailed_metrics → raw_metrics → key_metrics の順序で検索
+# MAGIC 💿 **Spill Detection Logic**:
+# MAGIC - Target metric: `"Sink - Num bytes spilled to disk due to memory pressure"`
+# MAGIC - Judgment condition: Spill detected when above metric value > 0
+# MAGIC - Search targets: detailed_metrics → raw_metrics → key_metrics in order
 # MAGIC
-# MAGIC 🎯 **スキュー検出ロジック**:
-# MAGIC - `AQEShuffleRead - Number of skewed partitions`: AQEベーススキュー検出
-# MAGIC - 判定条件: メトリクス値 > 0 でスキュー判定
-# MAGIC - 重要度: 検出値に基づいた判定
-# MAGIC - 統計ベース判定は非推奨（AQEベース判定を推奨）
+# MAGIC 🎯 **Skew Detection Logic**:
+# MAGIC - `AQEShuffleRead - Number of skewed partitions`: AQE-based skew detection
+# MAGIC - Judgment condition: Skew detected when metric value > 0
+# MAGIC - Importance: Judgment based on detected value
+# MAGIC - Statistics-based judgment is deprecated (AQE-based judgment recommended)
 # MAGIC
-# MAGIC 💡 **デバッグモード**: スピル・スキューの判定根拠を詳細表示したい場合
+# MAGIC 💡 **Debug Mode**: To display detailed spill/skew judgment basis
 # MAGIC ```python
 # MAGIC import os
-# MAGIC os.environ['DEBUG_SPILL_ANALYSIS'] = 'true'   # 特定メトリクススピル判定の詳細表示
-# MAGIC os.environ['DEBUG_SKEW_ANALYSIS'] = 'true'    # AQEベーススキュー判定の詳細表示
+# MAGIC os.environ['DEBUG_SPILL_ANALYSIS'] = 'true'   # Detailed display of specific metrics spill judgment
+# MAGIC os.environ['DEBUG_SKEW_ANALYSIS'] = 'true'    # Detailed display of AQE-based skew judgment
 # MAGIC ```
 
 # COMMAND ----------
 
-# 🐛 デバッグモード設定（オプション）
+# 🐛 Debug mode configuration (optional)
 # 
-# **スピル・スキューの判定根拠を詳細表示したい場合のみ実行してください**
+# **Execute only when you want to display detailed spill/skew judgment basis**
 # 
-# 📋 設定内容:
-# - DEBUG_SPILL_ANALYSIS=true: 特定メトリクススピル判定の詳細根拠を表示
-# - DEBUG_SKEW_ANALYSIS=true: AQEベーススキュー判定の詳細根拠を表示
+# 📋 Configuration details:
+# - DEBUG_SPILL_ANALYSIS=true: Display detailed basis for specific metrics spill judgment
+# - DEBUG_SKEW_ANALYSIS=true: Display detailed basis for AQE-based skew judgment
 # 
 # 💿 スピルデバッグ表示内容:
 # - ターゲットメトリクス: "Sink - Num bytes spilled to disk due to memory pressure"
