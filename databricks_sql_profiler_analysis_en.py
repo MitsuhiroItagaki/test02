@@ -2697,25 +2697,25 @@ def generate_liquid_clustering_markdown_report(clustering_analysis: Dict[str, An
     extracted_data = clustering_analysis.get('extracted_data', {})
     llm_analysis = clustering_analysis.get('llm_analysis', '')
     
-    markdown_content = f"""# Liquid Clustering 分析レポート
+    markdown_content = f"""# Liquid Clustering Analysis Report
 
-**生成日時**: {timestamp}  
-**分析方法**: {summary.get('analysis_method', 'Unknown')}  
-**LLMプロバイダー**: {summary.get('llm_provider', 'Unknown')}
+**Generated Date**: {timestamp}  
+**Analysis Method**: {summary.get('analysis_method', 'Unknown')}  
+**LLM Provider**: {summary.get('llm_provider', 'Unknown')}
 
-## 📊 パフォーマンス概要
+## 📊 Performance Overview
 
-| 項目 | 値 |
+| Item | Value |
 |------|-----|
-| 実行時間 | {performance_context.get('total_time_sec', 0):.1f}秒 |
-| データ読み込み | {performance_context.get('read_gb', 0):.2f}GB |
-| 出力行数 | {performance_context.get('rows_produced', 0):,}行 |
-| 読み込み行数 | {performance_context.get('rows_read', 0):,}行 |
-| フィルタ率 | {performance_context.get('data_selectivity', 0):.4f} |
+| Execution Time | {performance_context.get('total_time_sec', 0):.1f} seconds |
+| Data Read | {performance_context.get('read_gb', 0):.2f}GB |
+| Output Rows | {performance_context.get('rows_produced', 0):,} rows |
+| Read Rows | {performance_context.get('rows_read', 0):,} rows |
+| Filter Rate | {performance_context.get('data_selectivity', 0):.4f} |
 
-## 🔍 抽出されたメタデータ
+## 🔍 Extracted Metadata
 
-### フィルター条件 ({summary.get('total_filter_columns', 0)}個)
+### Filter Conditions ({summary.get('total_filter_columns', 0)} items)
 """
     
     # フィルター条件の詳細
@@ -3389,94 +3389,94 @@ def analyze_bottlenecks_with_llm(metrics: Dict[str, Any]) -> str:
     else:
         report_lines.append("Current performance is relatively good. Fine-tuning optimizations can expect 5-10% improvement.")
     
-    # === EXPLAIN + EXPLAIN COST結果に基づく詳細分析 ===
+    # === Detailed analysis based on EXPLAIN + EXPLAIN COST results ===
     if explain_enabled.upper() == 'Y' and (physical_plan or cost_statistics):
         report_lines.append("")
-        report_lines.append("## 6. EXPLAIN + EXPLAIN COST詳細分析")
+        report_lines.append("## 6. EXPLAIN + EXPLAIN COST Detailed Analysis")
         report_lines.append("")
         
         if physical_plan:
-            report_lines.append("### 🔍 Physical Plan分析")
+            report_lines.append("### 🔍 Physical Plan Analysis")
             report_lines.append("")
             
-            # Physical Planから重要な情報を抽出
+            # Extract important information from Physical Plan
             plan_analysis = []
             if "Exchange" in physical_plan:
-                plan_analysis.append("- **シャッフル操作検出**: データ転送のボトルネック可能性")
+                plan_analysis.append("- **Shuffle Operation Detected**: Potential data transfer bottleneck")
             if "BroadcastExchange" in physical_plan:
-                plan_analysis.append("- **BROADCAST JOIN適用済み**: 小テーブルの効率的な配布")
+                plan_analysis.append("- **BROADCAST JOIN Applied**: Efficient distribution of small tables")
             if "HashAggregate" in physical_plan:
-                plan_analysis.append("- **Hash集計処理**: メモリ効率の最適化が重要")
+                plan_analysis.append("- **Hash Aggregation Processing**: Memory efficiency optimization is important")
             if "FileScan" in physical_plan:
-                plan_analysis.append("- **ファイルスキャン操作**: I/O効率とフィルタプッシュダウンの確認")
+                plan_analysis.append("- **File Scan Operation**: Check I/O efficiency and filter pushdown")
             if "SortMergeJoin" in physical_plan:
-                plan_analysis.append("- **Sort Merge JOIN**: 大テーブル間の結合、BROADCAST適用を検討")
+                plan_analysis.append("- **Sort Merge JOIN**: Large table joins, consider BROADCAST application")
             
             if plan_analysis:
                 for analysis in plan_analysis:
                     report_lines.append(analysis)
             else:
-                report_lines.append("- Physical Planの詳細情報が利用可能です")
+                report_lines.append("- Physical Plan detailed information is available")
             report_lines.append("")
         
         if photon_explanation:
-            report_lines.append("### 🚀 Photon Explanation分析")
+            report_lines.append("### 🚀 Photon Explanation Analysis")
             report_lines.append("")
             
             photon_analysis = []
             if "photon" in photon_explanation.lower():
-                photon_analysis.append("- **Photon処理情報**: ベクトル化処理の最適化詳細")
+                photon_analysis.append("- **Photon Processing Information**: Vectorized processing optimization details")
             if "unsupported" in photon_explanation.lower():
-                photon_analysis.append("- **未対応関数検出**: Photon利用率向上の改善機会")
+                photon_analysis.append("- **Unsupported Function Detected**: Opportunity to improve Photon utilization")
             if "compiled" in photon_explanation.lower():
-                photon_analysis.append("- **コンパイル処理**: 実行時最適化の適用状況")
+                photon_analysis.append("- **Compilation Processing**: Runtime optimization application status")
             
             if photon_analysis:
                 for analysis in photon_analysis:
                     report_lines.append(analysis)
             else:
-                report_lines.append("- Photon実行の詳細情報が利用可能です")
+                report_lines.append("- Photon execution detailed information is available")
             report_lines.append("")
         
         if cost_statistics:
-            report_lines.append("### 💰 EXPLAIN COST統計分析")
+            report_lines.append("### 💰 EXPLAIN COST Statistical Analysis")
             report_lines.append("")
             
-            # EXPLAIN COST統計から重要な情報を抽出
+            # Extract important information from EXPLAIN COST statistics
             cost_analysis = []
             if "サイズ情報" in cost_statistics:
-                cost_analysis.append("- **テーブルサイズ統計**: 正確なサイズ情報によるBROADCAST判定精度向上")
+                cost_analysis.append("- **Table Size Statistics**: Improved BROADCAST judgment accuracy with accurate size information")
             if "行数情報" in cost_statistics:
-                cost_analysis.append("- **行数統計**: パーティション数最適化とメモリ使用量予測")
+                cost_analysis.append("- **Row Count Statistics**: Partition number optimization and memory usage prediction")
             if "選択率情報" in cost_statistics:
-                cost_analysis.append("- **選択率統計**: フィルタ効率最適化とWHERE条件順序調整")
+                cost_analysis.append("- **Selectivity Statistics**: Filter efficiency optimization and WHERE condition order adjustment")
             if "コスト情報" in cost_statistics:
-                cost_analysis.append("- **コスト見積もり**: JOIN戦略とアクセスパス選択の最適化")
+                cost_analysis.append("- **Cost Estimation**: JOIN strategy and access path selection optimization")
             if "パーティション情報" in cost_statistics:
-                cost_analysis.append("- **パーティション統計**: データ分散最適化とスキュー対策")
+                cost_analysis.append("- **Partition Statistics**: Data distribution optimization and skew countermeasures")
             
             if cost_analysis:
                 for analysis in cost_analysis:
                     report_lines.append(analysis)
                 report_lines.append("")
-                report_lines.append("**統計ベース最適化の利点**:")
-                report_lines.append("- 推測ではなく実際の統計に基づく最適化")
-                report_lines.append("- 事前のボトルネック予測とスピル回避")
-                report_lines.append("- 正確なコスト見積もりによる最適戦略選択")
+                report_lines.append("**Benefits of Statistics-Based Optimization**:")
+                report_lines.append("- Optimization based on actual statistics rather than guesswork")
+                report_lines.append("- Proactive bottleneck prediction and spill avoidance")
+                report_lines.append("- Optimal strategy selection through accurate cost estimation")
             else:
-                report_lines.append("- EXPLAIN COST統計情報が利用可能です")
+                report_lines.append("- EXPLAIN COST statistical information is available")
             report_lines.append("")
     elif explain_enabled.upper() == 'Y':
         report_lines.append("")
-        report_lines.append("## 6. EXPLAIN分析")
+        report_lines.append("## 6. EXPLAIN Analysis")
         report_lines.append("")
-        report_lines.append("⚠️ EXPLAIN・EXPLAIN COST結果ファイルが見つかりません")
-        report_lines.append("統計ベースの詳細分析を行うには、事前にEXPLAIN実行が必要です")
+        report_lines.append("⚠️ EXPLAIN・EXPLAIN COST result files not found")
+        report_lines.append("Statistics-based detailed analysis requires prior EXPLAIN execution")
         report_lines.append("")
     
     report_lines.append("")
     report_lines.append("---")
-    report_lines.append(f"*レポート生成: {timestamp} | 分析エンジン: Databricks SQL Profiler + EXPLAIN統合*")
+    report_lines.append(f"*Report generated: {timestamp} | Analysis engine: Databricks SQL Profiler + EXPLAIN integration*")
     
     print("✅ Comprehensive performance analysis report (EXPLAIN+EXPLAIN COST integration) completed")
     
@@ -6391,13 +6391,13 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
         import glob
         import os
         
-        print("🔍 EXPLAIN + EXPLAIN COST結果ファイルを検索中...")
+        print("🔍 Searching for EXPLAIN + EXPLAIN COST result files...")
         
-        # 1. 最新のEXPLAIN結果ファイルを検索（新しいファイル名パターン対応）
+        # 1. Search for latest EXPLAIN result files (supporting new filename patterns)
         explain_original_files = glob.glob("output_explain_original_*.txt")
         explain_optimized_files = glob.glob("output_explain_optimized_*.txt")
         
-        # オリジナルクエリのEXPLAIN結果を優先、なければ最適化後
+        # Prioritize original query EXPLAIN results, use optimized if not available
         explain_files = explain_original_files if explain_original_files else explain_optimized_files
         
         if explain_files:
@@ -6405,16 +6405,16 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
             try:
                 with open(latest_explain_file, 'r', encoding='utf-8') as f:
                     explain_content = f.read()
-                    print(f"✅ EXPLAIN結果ファイルを読み込み: {latest_explain_file}")
+                    print(f"✅ Loaded EXPLAIN result file: {latest_explain_file}")
                 
-                # Physical Planの抽出と処理（構造化抽出対応）
+                # Extract and process Physical Plan (structured extraction support)
                 if "== Physical Plan ==" in explain_content:
                     physical_plan_start = explain_content.find("== Physical Plan ==")
                     physical_plan_end = explain_content.find("== Photon", physical_plan_start)
                     if physical_plan_end == -1:
                         physical_plan_end = len(explain_content)
                     physical_plan_raw = explain_content[physical_plan_start:physical_plan_end].strip()
-                    print(f"📊 Physical Plan情報を抽出: {len(physical_plan_raw)} 文字")
+                    print(f"📊 Extracted Physical Plan information: {len(physical_plan_raw)} characters")
                     
                                     # 🧠 構造化抽出 vs 従来の切り詰めの選択
                 structured_enabled = globals().get('STRUCTURED_EXTRACTION_ENABLED', 'Y')
@@ -6470,14 +6470,14 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
                     print(f"🚀 Photon Explanation情報を抽出: {len(photon_explanation)} 文字")
                     
             except Exception as e:
-                print(f"⚠️ EXPLAIN結果ファイルの読み込みに失敗: {str(e)}")
+                print(f"⚠️ Failed to load EXPLAIN result file: {str(e)}")
                 explain_content = ""
         
-        # 2. 最新のEXPLAIN COST結果ファイルを検索
+        # 2. Search for latest EXPLAIN COST result files
         cost_original_files = glob.glob("output_explain_cost_original_*.txt")
         cost_optimized_files = glob.glob("output_explain_cost_optimized_*.txt")
         
-        # オリジナルクエリのEXPLAIN COST結果を優先、なければ最適化後
+        # Prioritize original query EXPLAIN COST results, use optimized if not available
         cost_files = cost_original_files if cost_original_files else cost_optimized_files
         
         if cost_files:
@@ -6485,9 +6485,9 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
             try:
                 with open(latest_cost_file, 'r', encoding='utf-8') as f:
                     explain_cost_content = f.read()
-                    print(f"💰 EXPLAIN COST結果ファイルを読み込み: {latest_cost_file}")
+                    print(f"💰 Loaded EXPLAIN COST result file: {latest_cost_file}")
                 
-                # 統計情報の抽出（構造化抽出対応）
+                # Extract statistical information (structured extraction support)
                 structured_enabled = globals().get('STRUCTURED_EXTRACTION_ENABLED', 'Y')
                 
                 if structured_enabled.upper() == 'Y':
