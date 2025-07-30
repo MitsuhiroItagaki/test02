@@ -303,8 +303,8 @@ print("🤖 LLM endpoint configuration completed")
 print(f"🤖 LLM Provider: {LLM_CONFIG['provider']}")
 
 if LLM_CONFIG['provider'] == 'databricks':
-    print(f"🔗 Databricksエンドポイント: {LLM_CONFIG['databricks']['endpoint_name']}")
-    thinking_status = "有効" if LLM_CONFIG['databricks'].get('thinking_enabled', False) else "無効"
+    print(f"🔗 Databricks endpoint: {LLM_CONFIG['databricks']['endpoint_name']}")
+    thinking_status = "Enabled" if LLM_CONFIG['databricks'].get('thinking_enabled', False) else "Disabled"
     thinking_budget = LLM_CONFIG['databricks'].get('thinking_budget_tokens', 65536)
     max_tokens = LLM_CONFIG['databricks'].get('max_tokens', 131072)
     print(f"🧠 Extended thinking mode: {thinking_status} (budget: {thinking_budget:,} tokens)")
@@ -372,13 +372,13 @@ except Exception:
 
 def load_profiler_json(file_path: str) -> Dict[str, Any]:
     """
-    SQLプロファイラーJSONファイルを読み込む
+    Load SQL profiler JSON file
     
     Args:
-        file_path: JSONファイルのパス（DBFS または ローカルパス）
+        file_path: JSON file path (DBFS or local path)
         
     Returns:
-        Dict: パースされたJSONデータ
+        Dict: Parsed JSON data
     """
     try:
         # DBFSパスの場合は適切に処理
@@ -401,7 +401,7 @@ def load_profiler_json(file_path: str) -> Dict[str, Any]:
                 data = json.load(file)
         
         print(f"✅ Successfully loaded JSON file: {file_path}")
-        print(f"📊 データサイズ: {len(str(data)):,} characters")
+        print(f"📊 Data size: {len(str(data)):,} characters")
         return data
     except Exception as e:
         print(f"❌ File loading error: {str(e)}")
@@ -2058,7 +2058,7 @@ def calculate_filter_rate_percentage(overall_metrics: Dict[str, Any], metrics: D
                         filter_metrics_found = True
                         
                         if debug_mode:
-                            print(f"   ノード {node.get('node_id', 'unknown')}: files_pruned_bytes = {files_pruned_bytes:,}")
+                            print(f"   Node {node.get('node_id', 'unknown')}: files_pruned_bytes = {files_pruned_bytes:,}")
         
         # ❌ デグレ防止: overall_read_bytes + pruned_bytes で計算
         if filter_metrics_found and overall_read_bytes > 0:
@@ -2070,27 +2070,27 @@ def calculate_filter_rate_percentage(overall_metrics: Dict[str, Any], metrics: D
                 overall_filter_rate = 0.0
                 
             if debug_mode:
-                print(f"   ❌ デグレ防止版: overall_read_bytes使用")
+                print(f"   ❌ Regression prevention version: using overall_read_bytes")
                 print(f"     overall_read_bytes: {overall_read_bytes:,} ({overall_read_bytes / (1024**4):.2f} TB)")
                 print(f"     total_files_pruned_bytes: {total_files_pruned_bytes:,} ({total_files_pruned_bytes / (1024**4):.2f} TB)")
                 print(f"     total_available_bytes: {total_available_bytes:,} ({total_available_bytes / (1024**4):.2f} TB)")
-                print(f"     プルーニング効率: {overall_filter_rate*100:.2f}%")
+                print(f"     Pruning efficiency: {overall_filter_rate*100:.2f}%")
             return overall_filter_rate
         
         if debug_mode:
-            print(f"   フィルタメトリクス: {'検出' if filter_metrics_found else '未検出'}")
+            print(f"   Filter metrics: {'Detected' if filter_metrics_found else 'Not detected'}")
             print(f"   overall_read_bytes: {overall_read_bytes:,}")
             if not filter_metrics_found:
-                print(f"   ⚠️ プルーニング情報が利用できません")
+                print(f"   ⚠️ Pruning information is not available")
             if overall_read_bytes == 0:
-                print(f"   ⚠️ 読み込みデータがありません")
+                print(f"   ⚠️ No read data available")
         
         # プルーニング情報がない場合は0を返す
         return 0.0
         
     except Exception as e:
         if debug_mode:
-            print(f"   フィルタ率計算エラー: {e}")
+            print(f"   Filter rate calculation error: {e}")
         return 0.0
 
 def extract_liquid_clustering_data(profiler_data: Dict[str, Any], metrics: Dict[str, Any]) -> Dict[str, Any]:
@@ -2196,17 +2196,17 @@ def extract_liquid_clustering_data(profiler_data: Dict[str, Any], metrics: Dict[
             print(f"🔍 View information details:")
             for table_name, table_info in extracted_data["table_info"].items():
                 if table_info.get('is_view', False):
-                    print(f"  📊 ビュー: {table_name}")
+                    print(f"  📊 View: {table_name}")
                     print(f"     Alias: {table_info.get('alias', 'None')}")
                     print(f"     Table type: {table_info.get('table_type', 'unknown')}")
                     
                     underlying_tables = table_info.get('underlying_tables', [])
                     if underlying_tables:
-                        print(f"     推定実テーブル数: {len(underlying_tables)}")
-                        for i, underlying_table in enumerate(underlying_tables[:3]):  # 最大3個表示
+                        print(f"     Estimated underlying table count: {len(underlying_tables)}")
+                        for i, underlying_table in enumerate(underlying_tables[:3]):  # Display max 3
                             print(f"       - {underlying_table}")
                         if len(underlying_tables) > 3:
-                            print(f"       ... および {len(underlying_tables) - 3} 個の追加テーブル")
+                            print(f"       ... and {len(underlying_tables) - 3} additional tables")
                     print()
         
         return extracted_data
@@ -2215,7 +2215,7 @@ def extract_liquid_clustering_data(profiler_data: Dict[str, Any], metrics: Dict[
     # プロファイラーデータから実行グラフ情報を取得（複数グラフ対応）
     graphs = profiler_data.get('graphs', [])
     if not graphs:
-        print("⚠️ グラフデータが見つかりません")
+        print("⚠️ Graph data not found")
         return extracted_data
 
     # すべてのグラフからノードを収集
@@ -2226,7 +2226,7 @@ def extract_liquid_clustering_data(profiler_data: Dict[str, Any], metrics: Dict[
             node['graph_index'] = graph_index
             all_nodes.append(node)
     
-    print(f"🔍 {len(graphs)}個のグラフから{len(all_nodes)}個のノードを処理中")
+    print(f"🔍 Processing {len(all_nodes)} nodes from {len(graphs)} graphs")
 
     # ノードからメタデータ情報を抽出
     for node in all_nodes:
