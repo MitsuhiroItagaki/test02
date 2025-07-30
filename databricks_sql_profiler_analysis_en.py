@@ -424,7 +424,7 @@ print("✅ Function definition completed: load_profiler_json")
 
 def detect_data_format(profiler_data: Dict[str, Any]) -> str:
     """
-    JSONデータの形式を検出
+    Detect JSON data format
     """
     # SQLプロファイラー形式の検出
     if 'graphs' in profiler_data and isinstance(profiler_data['graphs'], list):
@@ -589,7 +589,7 @@ def extract_performance_metrics_from_query_summary(profiler_data: Dict[str, Any]
 
 def extract_performance_metrics(profiler_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    SQLプロファイラーデータからボトルネック分析に必要なメトリクスを抽出（複数形式対応）
+    Extract bottleneck analysis metrics from SQL profiler data (supports multiple formats)
     """
     # データ形式を検出
     data_format = detect_data_format(profiler_data)
@@ -2942,14 +2942,14 @@ print("✅ Function definition completed: analyze_liquid_clustering_opportunitie
 
 def analyze_bottlenecks_with_llm(metrics: Dict[str, Any]) -> str:
     """
-    包括的なパフォーマンス分析レポートを生成
-    セル33（TOP10プロセス）、セル35（Liquid Clustering）、セル43（統合最適化実行）の情報を統合
-    EXPLAIN + EXPLAIN COST結果も活用してより精密な分析を実行
+    Generate comprehensive performance analysis report
+    Integrates information from Cell 33 (TOP10 processes), Cell 35 (Liquid Clustering), Cell 43 (integrated optimization execution)
+    Also leverages EXPLAIN + EXPLAIN COST results for more precise analysis
     
-    🚨 重要: パーセンテージ計算デグレ防止
-    - 並列実行ノードの時間合計を全体時間として使用することは絶対に禁止
-    - overall_metrics.total_time_ms（wall-clock time）を優先使用
-    - フォールバック時は最大ノード時間を使用（合計ではない）
+    🚨 Important: Prevention of percentage calculation degradation
+    - Using the sum of parallel execution node times as total time is strictly prohibited
+    - Prioritize using overall_metrics.total_time_ms (wall-clock time)
+    - Use maximum node time during fallback (not sum)
     """
     from datetime import datetime
     
@@ -6375,8 +6375,8 @@ def extract_cost_statistics_from_explain_cost(explain_cost_content: str) -> str:
 
 def generate_optimized_query_with_llm(original_query: str, analysis_result: str, metrics: Dict[str, Any]) -> str:
     """
-    セル33の詳細ボトルネック分析結果に基づいてSQLクエリを最適化（処理速度重視）
-    EXPLAIN + EXPLAIN COST実行フラグがYの場合は、統計情報も活用
+    Optimize SQL query based on detailed bottleneck analysis results from Cell 33 (processing speed priority)
+    Also leverages statistical information when EXPLAIN + EXPLAIN COST execution flag is Y
     """
     
     # EXPLAIN + EXPLAIN COST結果ファイルの読み込み（EXPLAIN_ENABLEDがYの場合）
@@ -8109,15 +8109,15 @@ def summarize_explain_results_with_llm(explain_content: str, explain_cost_conten
 
 def generate_optimization_strategy_summary(optimized_result: str, metrics: Dict[str, Any], analysis_result: str = "") -> str:
     """
-    最適化戦略の要約を生成
+    Generate optimization strategy summary
     
     Args:
-        optimized_result: 最適化結果（LLMレスポンス）
-        metrics: メトリクス情報
-        analysis_result: ボトルネック分析結果
+        optimized_result: Optimization result (LLM response)
+        metrics: Metrics information
+        analysis_result: Bottleneck analysis result
         
     Returns:
-        str: 最適化方針の要約
+        str: Optimization strategy summary
     """
     try:
         # メトリクスからボトルネック指標を取得
@@ -10311,15 +10311,15 @@ def extract_select_from_ctas(query: str) -> str:
 
 def generate_improved_query_for_performance_degradation(original_query: str, analysis_result: str, metrics: Dict[str, Any], degradation_analysis: Dict[str, Any], previous_optimized_query: str = "") -> str:
     """
-    パフォーマンス悪化専用のLLM最適化関数
-    悪化原因分析に基づいて具体的な改善策を適用
+    LLM optimization function specifically for performance degradation
+    Apply specific improvement measures based on degradation cause analysis
     
     Args:
-        original_query: 元のクエリ
-        analysis_result: ボトルネック分析結果
-        metrics: メトリクス情報
-        degradation_analysis: 悪化原因分析結果
-        previous_optimized_query: 前回の最適化クエリ
+        original_query: Original query
+        analysis_result: Bottleneck analysis result
+        metrics: Metrics information
+        degradation_analysis: Degradation cause analysis result
+        previous_optimized_query: Previous optimized query
     """
     
     # 悪化分析の詳細情報を抽出
@@ -10470,15 +10470,15 @@ def generate_improved_query_for_performance_degradation(original_query: str, ana
 
 def generate_optimized_query_with_error_feedback(original_query: str, analysis_result: str, metrics: Dict[str, Any], error_info: str = "", previous_optimized_query: str = "") -> str:
     """
-    エラー情報を含めてLLMによるSQL最適化を実行
-    エラー修正に特化したプロンプトを使用
+    Execute SQL optimization by LLM including error information
+    Use prompts specialized for error correction
     
     Args:
-        original_query: 元のクエリ
-        analysis_result: ボトルネック分析結果
-        metrics: メトリクス情報
-        error_info: エラー情報
-        previous_optimized_query: 初回最適化クエリ（ヒント保持用）
+        original_query: Original query
+        analysis_result: Bottleneck analysis result
+        metrics: Metrics information
+        error_info: Error information
+        previous_optimized_query: Initial optimized query (for hint retention)
     """
     
     # 初回最適化クエリの情報を含める
@@ -10747,14 +10747,14 @@ FROM store_sales ss
 
 def compare_query_performance(original_explain_cost: str, optimized_explain_cost: str) -> Dict[str, Any]:
     """
-    EXPLAIN COST結果を比較してパフォーマンス悪化を検出
+    Compare EXPLAIN COST results to detect performance degradation
     
     Args:
-        original_explain_cost: 元クエリのEXPLAIN COST結果
-        optimized_explain_cost: 最適化クエリのEXPLAIN COST結果
+        original_explain_cost: EXPLAIN COST result of original query
+        optimized_explain_cost: EXPLAIN COST result of optimized query
         
     Returns:
-        Dict: パフォーマンス比較結果と推奨事項
+        Dict: Performance comparison results and recommendations
     """
     comparison_result = {
         'is_optimization_beneficial': True,
@@ -10955,7 +10955,7 @@ def compare_query_performance(original_explain_cost: str, optimized_explain_cost
 
 def analyze_degradation_causes(performance_comparison: Dict[str, Any], original_explain_cost: str = "", optimized_explain_cost: str = "") -> Dict[str, str]:
     """
-    パフォーマンス悪化の原因を分析し、修正指示を生成
+    Analyze causes of performance degradation and generate correction instructions
     """
     degradation_analysis = {
         'primary_cause': 'unknown',
@@ -11077,7 +11077,7 @@ def analyze_degradation_causes(performance_comparison: Dict[str, Any], original_
 
 def analyze_explain_cost_differences(original_cost: str, optimized_cost: str) -> Dict[str, Any]:
     """
-    EXPLAIN COST結果の差分分析で悪化原因を特定
+    Identify degradation causes through differential analysis of EXPLAIN COST results
     """
     analysis = {
         'broadcast_issues': False,
@@ -11119,8 +11119,8 @@ def analyze_explain_cost_differences(original_cost: str, optimized_cost: str) ->
 
 def execute_iterative_optimization_with_degradation_analysis(original_query: str, analysis_result: str, metrics: Dict[str, Any], max_optimization_attempts: int = 3) -> Dict[str, Any]:
     """
-    反復的最適化とパフォーマンス悪化分析
-    最大3回まで悪化原因を分析して再最適化を試行し、改善されない場合は元クエリを使用
+    Iterative optimization and performance degradation analysis
+    Attempt re-optimization up to 3 times by analyzing degradation causes, use original query if no improvement
     """
     from datetime import datetime
     
@@ -12007,7 +12007,7 @@ def execute_explain_with_retry_logic(original_query: str, analysis_result: str, 
 
 def extract_sql_from_llm_response(llm_response: str) -> str:
     """
-    LLMレスポンスからSQLクエリ部分のみを抽出
+    Extract only SQL query part from LLM response
     """
     import re
     
@@ -12037,12 +12037,12 @@ def extract_sql_from_llm_response(llm_response: str) -> str:
 
 def execute_explain_and_save_to_file(original_query: str, query_type: str = "original") -> Dict[str, str]:
     """
-    クエリのEXPLAIN文とEXPLAIN COST文を実行し、EXPLAIN_ENABLED設定に基づいて結果をファイルに保存
-    CTASの場合はSELECT部分のみを抽出してEXPLAIN文に渡す
+    Execute EXPLAIN and EXPLAIN COST statements for queries and save results to file based on EXPLAIN_ENABLED setting
+    For CTAS, extract only the SELECT part and pass it to EXPLAIN statement
     
     Args:
-        original_query: EXPLAIN実行対象のクエリ
-        query_type: "original" または "optimized" でファイル名を識別
+        original_query: Query to execute EXPLAIN on
+        query_type: "original" or "optimized" to identify filename
     """
     from datetime import datetime
     import os
