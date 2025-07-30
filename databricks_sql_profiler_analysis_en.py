@@ -148,16 +148,16 @@ def save_debug_query_trial(query: str, attempt_num: int, trial_type: str, query_
         print(f"⚠️ DEBUG save error: {str(e)}")
         return ""
 
-# 🧠 構造化抽出設定（STRUCTURED_EXTRACTION_ENABLED: 'Y' = 構造化抽出使用, 'N' = 従来の切り詰め使用）
-# Physical PlanとEXPLAIN COSTの処理方式を制御
-# - 'Y': 重要情報のみを構造化抽出（推奨：高精度・高効率）
-# - 'N': 従来の文字数制限による切り詰め（フォールバック用）
+# 🧠 Structured extraction settings (STRUCTURED_EXTRACTION_ENABLED: 'Y' = use structured extraction, 'N' = use traditional truncation)
+# Controls the processing method for Physical Plan and EXPLAIN COST
+# - 'Y': Structured extraction of important information only (recommended: high precision & high efficiency)
+# - 'N': Traditional truncation based on character limits (for fallback)
 STRUCTURED_EXTRACTION_ENABLED = 'Y'
 
-# 🔄 自動エラー修正の最大試行回数設定（MAX_RETRIES: デフォルト2回）
-# LLMが生成した最適化クエリのEXPLAIN実行でエラーが発生した場合の再試行回数
-# - 1回目: 初回生成クエリでEXPLAIN実行
-# - 2回目以降: エラー情報をLLMに再入力して修正クエリを生成・再実行
+# 🔄 Maximum retry count settings for automatic error correction (MAX_RETRIES: default 2 times)
+# Number of retries when EXPLAIN execution of LLM-generated optimized queries encounters errors
+# - 1st attempt: EXPLAIN execution with initial generated query
+# - 2nd attempt and beyond: Re-input error information to LLM to generate corrected query and re-execute
 # - 最大試行回数に達した場合: 元の動作可能クエリを使用してファイル生成
 MAX_RETRIES = 3
 
@@ -1440,18 +1440,18 @@ def format_filter_rate_display(filter_result: Dict[str, Any]) -> str:
 
 def extract_detailed_bottleneck_analysis(extracted_metrics: Dict[str, Any]) -> Dict[str, Any]:
     """
-    セル33スタイルの詳細ボトルネック分析を実行し、構造化されたデータを返す
+    Perform Cell 33-style detailed bottleneck analysis and return structured data
     
-    🚨 重要: パーセンテージ計算デグレ防止
-    - 並列実行ノードの時間合計を全体時間として使用することは絶対に禁止
-    - overall_metrics.total_time_ms（wall-clock time）を優先使用
-    - フォールバック時は最大ノード時間を使用（合計ではない）
+    🚨 Important: Prevention of percentage calculation degradation
+    - Using the sum of parallel execution node times as total time is strictly prohibited
+    - Prioritize using overall_metrics.total_time_ms (wall-clock time)
+    - Use maximum node time during fallback (not sum)
     
     Args:
-        extracted_metrics: 抽出されたメトリクス
+        extracted_metrics: Extracted metrics
         
     Returns:
-        dict: 詳細なボトルネック分析結果
+        dict: Detailed bottleneck analysis results
     """
     detailed_analysis = {
         "top_bottleneck_nodes": [],
@@ -2095,7 +2095,7 @@ def calculate_filter_rate_percentage(overall_metrics: Dict[str, Any], metrics: D
 
 def extract_liquid_clustering_data(profiler_data: Dict[str, Any], metrics: Dict[str, Any]) -> Dict[str, Any]:
     """
-    SQLプロファイラーデータからLiquid Clustering分析に必要なデータを抽出（LLM分析用）
+    Extract data required for Liquid Clustering analysis from SQL profiler data (for LLM analysis)
     """
     extracted_data = {
         "filter_columns": [],
@@ -5881,13 +5881,13 @@ def analyze_broadcast_feasibility(metrics: Dict[str, Any], original_query: str, 
 
 def extract_structured_physical_plan(physical_plan: str) -> Dict[str, Any]:
     """
-    Physical Planから重要情報のみを構造化抽出（トークン制限対策）
+    Structured extraction of important information only from Physical Plan (countermeasure for token limits)
     
     Args:
-        physical_plan: Physical Planの完全テキスト
+        physical_plan: Complete text of Physical Plan
     
     Returns:
-        Dict: 構造化された重要情報
+        Dict: Structured important information
     """
     import re
     
@@ -6048,24 +6048,24 @@ def extract_structured_physical_plan(physical_plan: str) -> Dict[str, Any]:
 
 def extract_structured_cost_statistics(explain_cost_content: str) -> Dict[str, Any]:
     """
-    EXPLAIN COSTから数値統計のみを構造化抽出（トークン制限対策）
+    Structured extraction of numerical statistics only from EXPLAIN COST (countermeasure for token limits)
     
     Args:
-        explain_cost_content: EXPLAIN COSTの完全結果
+        explain_cost_content: Complete EXPLAIN COST results
     
     Returns:
-        Dict: 構造化された統計情報
+        Dict: Structured statistical information
     """
     import re
     
     extracted = {
-        "table_stats": {},      # テーブル別統計（サイズ、行数）
-        "join_costs": {},       # JOIN別コスト見積もり  
-        "selectivity": {},      # フィルタ選択率
-        "partition_info": {},   # パーティション統計
-        "memory_estimates": {}, # メモリ使用量予測
-        "cost_breakdown": {},   # コスト内訳
-        "critical_stats": {},   # 重要統計値
+        "table_stats": {},      # Table-specific statistics (size, row count)
+        "join_costs": {},       # JOIN-specific cost estimates  
+        "selectivity": {},      # Filter selectivity
+        "partition_info": {},   # Partition statistics
+        "memory_estimates": {}, # Memory usage predictions
+        "cost_breakdown": {},   # Cost breakdown
+        "critical_stats": {},   # Critical statistical values
         "total_size": len(explain_cost_content),
         "extraction_summary": ""
     }
@@ -6429,45 +6429,45 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
                     try:
                         structured_plan = extract_structured_physical_plan(physical_plan_raw)
                         
-                        # 構造化結果をJSON形式で文字列化
+                        # Convert structured results to JSON format string
                         import json
                         physical_plan = json.dumps(structured_plan, ensure_ascii=False, indent=2)
                         
-                        print(f"🧠 構造化抽出完了: {len(physical_plan_raw):,} → {len(physical_plan):,} 文字")
-                        print(f"   {structured_plan.get('extraction_summary', '📊 構造化抽出完了')}")
+                        print(f"🧠 Structured extraction completed: {len(physical_plan_raw):,} → {len(physical_plan):,} characters")
+                        print(f"   {structured_plan.get('extraction_summary', '📊 Structured extraction completed')}")
                         
-                        # DEBUG_ENABLED='Y'の場合、構造化結果と元データを保存
+                        # When DEBUG_ENABLED='Y', save structured results and original data
                         if debug_enabled.upper() == 'Y':
                             try:
                                 from datetime import datetime
                                 timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
                                 
-                                # 構造化結果保存
+                                # Save structured results
                                 structured_plan_filename = f"output_physical_plan_structured_{timestamp}.json"
                                 with open(structured_plan_filename, 'w', encoding='utf-8') as f:
                                     f.write(physical_plan)
                                 
-                                print(f"📄 構造化Physical Planを保存: {structured_plan_filename}")
+                                print(f"📄 Saved structured Physical Plan: {structured_plan_filename}")
                                 
                             except Exception as save_error:
-                                print(f"⚠️ Physical Plan保存に失敗: {str(save_error)}")
+                                print(f"⚠️ Failed to save Physical Plan: {str(save_error)}")
                                 
                     except Exception as extraction_error:
-                        print(f"⚠️ 構造化抽出に失敗、従来方式にフォールバック: {str(extraction_error)}")
-                        # フォールバック: 従来の切り詰め方式
+                        print(f"⚠️ Structured extraction failed, falling back to traditional method: {str(extraction_error)}")
+                        # Fallback: Traditional truncation method
                         MAX_PLAN_SIZE = 30000
                         if len(physical_plan_raw) > MAX_PLAN_SIZE:
                             physical_plan = physical_plan_raw[:MAX_PLAN_SIZE] + "\n\nStructured extraction failed, truncated to limit"
-                            print(f"⚠️ フォールバック: Physical Planを{MAX_PLAN_SIZE}文字に切り詰めました")
+                            print(f"⚠️ Fallback: Physical Plan truncated to {MAX_PLAN_SIZE} characters")
                         else:
                             physical_plan = physical_plan_raw
-                            print(f"⚠️ Physical Planをトークン制限のため{MAX_PLAN_SIZE}文字に切り詰めました")
+                            print(f"⚠️ Physical Plan truncated to {MAX_PLAN_SIZE} characters due to token limit")
                 
-                # Photon Explanationの抽出
+                # Extract Photon Explanation
                 if "== Photon Explanation ==" in explain_content:
                     photon_start = explain_content.find("== Photon Explanation ==")
                     photon_explanation = explain_content[photon_start:].strip()
-                    print(f"🚀 Photon Explanation情報を抽出: {len(photon_explanation)} 文字")
+                    print(f"🚀 Extracted Photon Explanation information: {len(photon_explanation)} characters")
                     
             except Exception as e:
                 print(f"⚠️ Failed to load EXPLAIN result file: {str(e)}")
@@ -6495,24 +6495,24 @@ def generate_optimized_query_with_llm(original_query: str, analysis_result: str,
                     try:
                         structured_cost = extract_structured_cost_statistics(explain_cost_content)
                         
-                        # 構造化結果をJSON形式で文字列化
+                        # Convert structured results to JSON format string
                         import json
                         cost_statistics = json.dumps(structured_cost, ensure_ascii=False, indent=2)
                         
-                        print(f"💰 EXPLAIN COST構造化抽出完了: {len(explain_cost_content):,} → {len(cost_statistics):,} 文字 (圧縮率: {len(explain_cost_content)//len(cost_statistics) if len(cost_statistics) > 0 else 0}x)")
-                        print(f"   {structured_cost.get('extraction_summary', '💰 統計抽出完了')}")
+                        print(f"💰 EXPLAIN COST structured extraction completed: {len(explain_cost_content):,} → {len(cost_statistics):,} characters (compression ratio: {len(explain_cost_content)//len(cost_statistics) if len(cost_statistics) > 0 else 0}x)")
+                        print(f"   {structured_cost.get('extraction_summary', '💰 Statistical extraction completed')}")
                         
                     except Exception as extraction_error:
-                        print(f"⚠️ EXPLAIN COST構造化抽出に失敗、従来方式にフォールバック: {str(extraction_error)}")
-                        # フォールバック: 従来の抽出方式
+                        print(f"⚠️ EXPLAIN COST structured extraction failed, falling back to traditional method: {str(extraction_error)}")
+                        # Fallback: Traditional extraction method
                         cost_statistics = extract_cost_statistics_from_explain_cost(explain_cost_content)
-                        print(f"📊 EXPLAIN COST統計情報を抽出（従来方式）: {len(cost_statistics)} 文字")
+                        print(f"📊 Extracted EXPLAIN COST statistics (traditional method): {len(cost_statistics)} characters")
                 else:
-                    # 🔄 従来の抽出アプローチ
+                    # 🔄 Traditional extraction approach
                     cost_statistics = extract_cost_statistics_from_explain_cost(explain_cost_content)
-                    print(f"📊 EXPLAIN COST統計情報を抽出: {len(cost_statistics)} 文字")
+                    print(f"📊 Extracted EXPLAIN COST statistics: {len(cost_statistics)} characters")
                 
-                # 🚨 DEBUG_ENABLED='Y'の場合、抽出された統計情報を常に保存
+                # 🚨 When DEBUG_ENABLED='Y', always save extracted statistical information
                 debug_enabled = globals().get('DEBUG_ENABLED', 'N')
                 if debug_enabled.upper() == 'Y':
                     try:
