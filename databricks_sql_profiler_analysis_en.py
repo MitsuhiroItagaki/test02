@@ -3299,64 +3299,64 @@ def analyze_bottlenecks_with_llm(metrics: Dict[str, Any]) -> str:
             report_lines.append(f"```")
             report_lines.append("")
     
-    # 最適化推奨アクション
-    report_lines.append("## 5. 推奨最適化アクション")
+    # Optimization recommendation actions
+    report_lines.append("## 5. Recommended Optimization Actions")
     report_lines.append("")
     
-    # 優先度別の推奨事項
+    # Priority-based recommendations
     high_priority_actions = []
     medium_priority_actions = []
     low_priority_actions = []
     
-    # CRITICAL/HIGH priorityアクション
+    # CRITICAL/HIGH priority actions
     if not photon_enabled:
-        high_priority_actions.append("**Photonエンジンの有効化** - 最大50%の性能向上期待")
+        high_priority_actions.append("**Enable Photon Engine** - Expected up to 50% performance improvement")
     
     if has_spill:
-        high_priority_actions.append(f"**メモリスピル解決** - {spill_gb:.2f}GBのスピルを解消")
+        high_priority_actions.append(f"**Resolve Memory Spill** - Eliminate {spill_gb:.2f}GB spill")
     
     if has_shuffle_bottleneck:
-        high_priority_actions.append("**シャッフル最適化** - JOIN順序とREPARTITION適用")
+        high_priority_actions.append("**Shuffle Optimization** - JOIN order and REPARTITION application")
     
-    # MEDIUMアクション
+    # MEDIUM actions
     if photon_enabled and photon_utilization < 80:
-        medium_priority_actions.append("**Photon利用率向上** - 設定の最適化")
+        medium_priority_actions.append("**Improve Photon Utilization** - Configuration optimization")
     
     if has_low_parallelism:
-        medium_priority_actions.append("**並列度向上** - クラスター設定の見直し")
+        medium_priority_actions.append("**Improve Parallelism** - Cluster configuration review")
     
     if cache_hit_ratio < 50:
-        medium_priority_actions.append("**キャッシュ効率改善** - データアクセスパターンの最適化")
+        medium_priority_actions.append("**Improve Cache Efficiency** - Data access pattern optimization")
     
     # Liquid Clustering
     if identified_tables:
-        medium_priority_actions.append("**Liquid Clustering実装** - 主要テーブルのクラスタリング")
+        medium_priority_actions.append("**Implement Liquid Clustering** - Clustering of key tables")
     
-    # LOWアクション
+    # LOW actions
     if data_selectivity < 50:
-        low_priority_actions.append("**WHERE句最適化** - フィルタ効率の向上")
+        low_priority_actions.append("**WHERE Clause Optimization** - Improve filter efficiency")
     
-    # アクションの出力
+    # Action output
     if high_priority_actions:
-        report_lines.append("### 🚨 緊急対応 (HIGH優先度)")
+        report_lines.append("### 🚨 Urgent Response (HIGH Priority)")
         for i, action in enumerate(high_priority_actions, 1):
             report_lines.append(f"{i}. {action}")
         report_lines.append("")
     
     if medium_priority_actions:
-        report_lines.append("### ⚠️ 重要改善 (MEDIUM優先度)")
+        report_lines.append("### ⚠️ Important Improvements (MEDIUM Priority)")
         for i, action in enumerate(medium_priority_actions, 1):
             report_lines.append(f"{i}. {action}")
         report_lines.append("")
     
     if low_priority_actions:
-        report_lines.append("### 📝 長期最適化 (LOW優先度)")
+        report_lines.append("### 📝 Long-term Optimization (LOW Priority)")
         for i, action in enumerate(low_priority_actions, 1):
             report_lines.append(f"{i}. {action}")
         report_lines.append("")
     
-    # 期待効果
-    report_lines.append("## 6. 期待されるパフォーマンス改善")
+    # Expected effects
+    report_lines.append("## 6. Expected Performance Improvements")
     report_lines.append("")
     
     total_improvement_estimate = 0
@@ -3364,30 +3364,30 @@ def analyze_bottlenecks_with_llm(metrics: Dict[str, Any]) -> str:
     
     if not photon_enabled:
         total_improvement_estimate += 40
-        improvement_details.append("- **Photon有効化**: 30-50%の実行時間短縮")
+        improvement_details.append("- **Photon Activation**: 30-50% execution time reduction")
     
     if has_spill:
         total_improvement_estimate += 25
-        improvement_details.append(f"- **スピル解消**: 20-30%の実行時間短縮 ({spill_gb:.2f}GBスピル削減)")
+        improvement_details.append(f"- **Spill Resolution**: 20-30% execution time reduction ({spill_gb:.2f}GB spill reduction)")
     
     if has_shuffle_bottleneck:
         total_improvement_estimate += 20
-        improvement_details.append("- **シャッフル最適化**: 15-25%の実行時間短縮")
+        improvement_details.append("- **Shuffle Optimization**: 15-25% execution time reduction")
     
     if identified_tables:
         total_improvement_estimate += 15
-        improvement_details.append("- **Liquid Clustering**: 10-20%の実行時間短縮")
+        improvement_details.append("- **Liquid Clustering**: 10-20% execution time reduction")
     
-    # 改善効果の上限設定
+    # Set upper limit for improvement effects
     total_improvement_estimate = min(total_improvement_estimate, 80)
     
     if improvement_details:
         for detail in improvement_details:
             report_lines.append(detail)
         report_lines.append("")
-        report_lines.append(f"**総合改善見込み**: 最大{total_improvement_estimate}%の実行時間短縮")
+        report_lines.append(f"**Overall Improvement Estimate**: Up to {total_improvement_estimate}% execution time reduction")
     else:
-        report_lines.append("現在のパフォーマンスは比較的良好です。微細な最適化により5-10%の改善が期待できます。")
+        report_lines.append("Current performance is relatively good. Fine-tuning optimizations can expect 5-10% improvement.")
     
     # === EXPLAIN + EXPLAIN COST結果に基づく詳細分析 ===
     if explain_enabled.upper() == 'Y' and (physical_plan or cost_statistics):
@@ -4957,35 +4957,35 @@ try:
 except Exception as e:
     print("✅ LLMによるボトルネック分析完了")
 
-print("✅ 分析結果は後でoptimization_reportに統合されます")
+print("✅ Analysis results will be integrated into optimization_report later")
 print()
-print("🚀 分析完了！結果を確認してクエリ最適化にお役立てください。")
+print("🚀 Analysis complete! Please check the results and use them for query optimization.")
 print("🎉" * 20)
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC # 🔧 SQL最適化機能セクション
+# MAGIC # 🔧 SQL Optimization Function Section
 # MAGIC
-# MAGIC **このセクションではSQLクエリの最適化を行います**
+# MAGIC **This section performs SQL query optimization**
 # MAGIC
-# MAGIC 📋 **最適化プロセス:**
-# MAGIC - プロファイラーデータからオリジナルクエリの抽出
-# MAGIC - LLMによるクエリ最適化の実行
-# MAGIC - 最適化結果のファイル生成
-# MAGIC - テスト実行の準備
+# MAGIC 📋 **Optimization Process:**
+# MAGIC - Extract original query from profiler data
+# MAGIC - Execute query optimization using LLM
+# MAGIC - Generate optimization result files
+# MAGIC - Prepare for test execution
 # MAGIC
-# MAGIC ⚠️ **前提条件:** メイン処理セクションを完了してから実行してください
+# MAGIC ⚠️ **Prerequisites:** Please complete the main processing section before execution
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 🔧 SQL最適化関連関数定義
+# MAGIC ## 🔧 SQL Optimization Related Function Definitions
 # MAGIC
-# MAGIC このセルでは以下の関数を定義します：
-# MAGIC - `extract_original_query_from_profiler_data`: プロファイラーデータからオリジナルクエリを抽出
-# MAGIC - `generate_optimized_query_with_llm`: LLM分析結果に基づくクエリ最適化
-# MAGIC - `save_optimized_sql_files`: 最適化結果の各種ファイル保存
+# MAGIC This cell defines the following functions:
+# MAGIC - `extract_original_query_from_profiler_data`: Extract original query from profiler data
+# MAGIC - `generate_optimized_query_with_llm`: Query optimization based on LLM analysis results
+# MAGIC - `save_optimized_sql_files`: Save various optimization result files
 
 # COMMAND ----------
 
