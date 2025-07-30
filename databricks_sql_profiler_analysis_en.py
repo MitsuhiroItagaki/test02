@@ -453,9 +453,9 @@ def extract_performance_metrics_from_query_summary(profiler_data: Dict[str, Any]
             return {}
         
         print(f"✅ Detected SQL query summary format metrics")
-        print(f"   - 実行時間: {metrics_data.get('totalTimeMs', 0):,} ms")
-        print(f"   - 読み込みデータ: {metrics_data.get('readBytes', 0) / 1024 / 1024 / 1024:.2f} GB")
-        print(f"   - 処理行数: {metrics_data.get('rowsReadCount', 0):,} 行")
+        print(f"   - Execution time: {metrics_data.get('totalTimeMs', 0):,} ms")
+        print(f"   - Data read: {metrics_data.get('readBytes', 0) / 1024 / 1024 / 1024:.2f} GB")
+        print(f"   - Rows processed: {metrics_data.get('rowsReadCount', 0):,} rows")
         
         # 基本メトリクスの抽出
         overall_metrics = {
@@ -584,7 +584,7 @@ def extract_performance_metrics_from_query_summary(profiler_data: Dict[str, Any]
         }
         
     except Exception as e:
-        print(f"⚠️ SQLクエリサマリー形式のメトリクス抽出でエラー: {str(e)}")
+        print(f"⚠️ Error extracting SQL query summary format metrics: {str(e)}")
         return {}
 
 def extract_performance_metrics(profiler_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -604,7 +604,7 @@ def extract_performance_metrics(profiler_data: Dict[str, Any]) -> Dict[str, Any]
             try:
                 result["liquid_clustering_analysis"] = analyze_liquid_clustering_opportunities(profiler_data, result)
             except Exception as e:
-                print(f"⚠️ Liquid Clustering分析をスキップ: {str(e)}")
+                print(f"⚠️ Skipping Liquid Clustering analysis: {str(e)}")
                 result["liquid_clustering_analysis"] = {}
         return result
     elif data_format == 'sql_profiler':
@@ -612,7 +612,7 @@ def extract_performance_metrics(profiler_data: Dict[str, Any]) -> Dict[str, Any]
         # 既存のSQLプロファイラー形式の処理を継続
         pass
     else:
-        print(f"⚠️ 未知のデータ形式です: {data_format}")
+        print(f"⚠️ Unknown data format: {data_format}")
         return {}
     
     # 既存のSQLプロファイラー形式の処理
@@ -663,7 +663,7 @@ def extract_performance_metrics(profiler_data: Dict[str, Any]) -> Dict[str, Any]
     if 'graphs' in profiler_data and profiler_data['graphs']:
         # すべてのグラフを分析
         for graph_index, graph in enumerate(profiler_data['graphs']):
-            print(f"🔍 グラフ{graph_index}を分析中...")
+            print(f"🔍 Analyzing graph {graph_index}...")
             
             # ステージデータ
             if 'stageData' in graph:
@@ -1680,7 +1680,7 @@ def extract_detailed_bottleneck_analysis(extracted_metrics: Dict[str, Any]) -> D
     
     return detailed_analysis
 
-print("✅ 関数定義完了: get_meaningful_node_name, extract_shuffle_attributes, extract_detailed_bottleneck_analysis")
+print("✅ Function definition completed: get_meaningful_node_name, extract_shuffle_attributes, extract_detailed_bottleneck_analysis")
 
 # COMMAND ----------
 
@@ -1914,7 +1914,7 @@ def calculate_bottleneck_indicators(metrics: Dict[str, Any]) -> Dict[str, Any]:
     
     return indicators
 
-print("✅ 関数定義完了: calculate_bottleneck_indicators")
+print("✅ Function definition completed: calculate_bottleneck_indicators")
 
 # COMMAND ----------
 
@@ -2037,7 +2037,7 @@ def calculate_filter_rate_percentage(overall_metrics: Dict[str, Any], metrics: D
     overall_read_bytes = overall_metrics.get('read_bytes', 0)
     
     if debug_mode:
-        print(f"🔍 フィルタ率計算デバッグ（overall_metrics.read_bytes使用版）:")
+        print(f"🔍 Filter rate calculation debug (using overall_metrics.read_bytes version):")
         print(f"   overall_read_bytes: {overall_read_bytes:,} ({overall_read_bytes / (1024**4):.2f} TB)")
     
     try:
@@ -2109,12 +2109,12 @@ def extract_liquid_clustering_data(profiler_data: Dict[str, Any], metrics: Dict[
         "metadata_summary": {}
     }
     
-    print(f"🔍 Liquid Clustering分析用データ抽出開始")
+    print(f"🔍 Starting data extraction for Liquid Clustering analysis")
     
     # データ形式を確認
     data_format = metrics.get('data_format', '')
     if data_format == 'sql_query_summary':
-        print("📊 SQLクエリサマリー形式: 制限付きのLiquid Clustering分析")
+        print("📊 SQL query summary format: Limited Liquid Clustering analysis")
         # test2.json形式の場合は制限付きの分析を行う
         query_info = metrics.get('query_info', {})
         query_text = query_info.get('query_text', '')
@@ -2189,16 +2189,16 @@ def extract_liquid_clustering_data(profiler_data: Dict[str, Any], metrics: Dict[
             "analysis_limitation": "SQLクエリサマリー形式のため詳細分析が制限されています"
         }
         
-        print(f"✅ 制限付きデータ抽出完了: {extracted_data['metadata_summary']}")
+        print(f"✅ Limited data extraction completed: {extracted_data['metadata_summary']}")
         
         # ビュー情報の詳細表示
         if view_count > 0:
-            print(f"🔍 ビュー情報の詳細:")
+            print(f"🔍 View information details:")
             for table_name, table_info in extracted_data["table_info"].items():
                 if table_info.get('is_view', False):
                     print(f"  📊 ビュー: {table_name}")
-                    print(f"     エイリアス: {table_info.get('alias', 'なし')}")
-                    print(f"     テーブル種別: {table_info.get('table_type', 'unknown')}")
+                    print(f"     Alias: {table_info.get('alias', 'None')}")
+                      print(f"     Table type: {table_info.get('table_type', 'unknown')}")
                     
                     underlying_tables = table_info.get('underlying_tables', [])
                     if underlying_tables:
