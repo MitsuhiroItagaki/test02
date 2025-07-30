@@ -10029,7 +10029,9 @@ def save_optimized_sql_files(original_query: str, optimized_result: str, metrics
             f.write(f"-- Optimization result:\n{optimized_result_main_content}\n")
     
     # Save analysis report file (readable report refined by LLM)
-    report_filename = f"output_optimization_report_{timestamp}.md"
+    # Generate filename based on OUTPUT_LANGUAGE setting
+    language_suffix = 'en' if OUTPUT_LANGUAGE == 'en' else 'jp'
+    report_filename = f"output_optimization_report_{language_suffix}_{timestamp}.md"
     
     print("🤖 Executing LLM report refinement...")
     
@@ -12784,8 +12786,9 @@ def find_latest_report_file() -> str:
     import os
     import glob
     
-    # 現在のディレクトリでレポートファイルを検索
-    pattern = "output_optimization_report_*.md"
+    # 現在のディレクトリでレポートファイルを検索 (言語別対応)
+    language_suffix = 'en' if OUTPUT_LANGUAGE == 'en' else 'jp'
+    pattern = f"output_optimization_report_{language_suffix}_*.md"
     report_files = glob.glob(pattern)
     
     if not report_files:
@@ -13005,9 +13008,14 @@ try:
         original_files = glob.glob("output_original_query_*.sql")
         all_reports = glob.glob("output_optimization_report*.md")
         
+        # 現在の言語設定に対応するレポートファイル
+        language_suffix = 'en' if OUTPUT_LANGUAGE == 'en' else 'jp'
+        current_lang_reports = glob.glob(f"output_optimization_report_{language_suffix}_*.md")
+        
         print(f"\n📁 現在のファイル状況:")
         print(f"   📄 最適化クエリファイル: {len(sql_files)} 個")
         print(f"   📄 オリジナルクエリファイル: {len(original_files)} 個")
+        print(f"   📄 レポートファイル（{language_suffix.upper()}）: {len(current_lang_reports)} 個")
         print(f"   📄 レポートファイル（全体）: {len(all_reports)} 個")
         
         if all_reports:
@@ -13143,7 +13151,8 @@ else:
     print("\n🧹 中間ファイルの削除処理")
     print("-" * 40)
     print("💡 DEBUG_ENABLED=N のため、中間ファイルを削除します")
-    print("📁 保持されるファイル: output_original_query_*.sql, output_optimization_report_*.md, output_optimized_query_*.sql")
+    language_suffix = 'en' if OUTPUT_LANGUAGE == 'en' else 'jp'
+    print(f"📁 保持されるファイル: output_original_query_*.sql, output_optimization_report_{language_suffix}_*.md, output_optimized_query_*.sql")
     
     import glob
     import os
