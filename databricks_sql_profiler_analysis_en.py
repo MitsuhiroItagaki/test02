@@ -11189,7 +11189,7 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
         
         # LLMエラーチェック
         if isinstance(optimized_query, str) and optimized_query.startswith("LLM_ERROR:"):
-            print(f"❌ 最適化試行{attempt_num}でLLMエラーが発生")
+            print(f"❌ LLM error occurred in optimization attempt {attempt_num}")
             optimization_attempts.append({
                 'attempt': attempt_num,
                 'status': 'llm_error',
@@ -11245,12 +11245,12 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
         
         # 🚨 緊急デバッグ: EXPLAIN COST成功/失敗の詳細表示
         print(f"🔍 EXPLAIN COST成功判定:")
-        print(f"   📊 元クエリ: {'✅ 成功' if original_cost_success else '❌ 失敗'}")
+        print(f"   📊 Original query: {'✅ Success' if original_cost_success else '❌ Failed'}")
         if not original_cost_success:
             print(f"      • explain_cost_file存在: {'explain_cost_file' in original_explain_cost_result}")
             print(f"      • error_file存在: {'error_file' in original_explain_cost_result}")
             print(f"      • 返却キー: {list(original_explain_cost_result.keys())}")
-        print(f"   🔧 最適化クエリ: {'✅ 成功' if optimized_cost_success else '❌ 失敗'}")
+        print(f"   🔧 Optimized query: {'✅ Success' if optimized_cost_success else '❌ Failed'}")
         if not optimized_cost_success:
             print(f"      • explain_cost_file存在: {'explain_cost_file' in optimized_explain_cost_result}")
             print(f"      • error_file存在: {'error_file' in optimized_explain_cost_result}")
@@ -11286,7 +11286,7 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                 
                 # LLMエラーチェック
                 if isinstance(corrected_query, str) and corrected_query.startswith("LLM_ERROR:"):
-                    print("❌ LLM修正でエラーが発生: フォールバック評価を実行")
+                    print("❌ Error occurred in LLM correction: Executing fallback evaluation")
                 else:
                     # thinking_enabled対応
                     if isinstance(corrected_query, list):
@@ -11310,7 +11310,7 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                         else:
                             print("⚠️ 修正クエリでもエラー発生: フォールバック評価を実行")
                     else:
-                        print("❌ SQLクエリの抽出に失敗: フォールバック評価を実行")
+                        print("❌ Failed to extract SQL query: Executing fallback evaluation")
             
             # エラー修正後もエラーの場合、フォールバック評価を実行
             if not optimized_cost_success:
@@ -11419,14 +11419,14 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                             break
                     
                 except Exception as e:
-                    print(f"❌ フォールバック評価でもエラー: {str(e)}")
+                    print(f"❌ Error in fallback evaluation as well: {str(e)}")
                     print(f"   📊 エラー詳細: {type(e).__name__}")
                     if hasattr(e, '__traceback__'):
                         import traceback
                         print(f"   📄 スタックトレース: {traceback.format_exc()}")
                     performance_comparison = None
             else:
-                print("❌ EXPLAIN結果も不足のため、パフォーマンス評価不可")
+                                    print("❌ EXPLAIN results also insufficient, performance evaluation impossible")
                 performance_comparison = None
         
         # 🚨 緊急修正: ロジック順序を修正（EXPLAIN COST成功判定を先に実行）
@@ -11575,7 +11575,7 @@ def execute_iterative_optimization_with_degradation_analysis(original_query: str
                 print(f"🔄 試行{attempt_num + 1}でパフォーマンス評価の再試行を行います")
                 continue
             else:
-                print(f"❌ 最大試行回数({max_optimization_attempts})に到達、元クエリを使用")
+                print(f"❌ Maximum attempts ({max_optimization_attempts}) reached, using original query")
                 break
         
         else:
@@ -11701,7 +11701,7 @@ def execute_explain_with_retry_logic(original_query: str, analysis_result: str, 
     
     # LLMエラーチェック（重要）
     if isinstance(optimized_query, str) and optimized_query.startswith("LLM_ERROR:"):
-        print("❌ LLM最適化でエラーが発生したため、元のクエリを使用します")
+        print("❌ Error occurred in LLM optimization, using original query")
         print(f"🔧 エラー詳細: {optimized_query[10:]}")  # "LLM_ERROR:"を除去
         
         # エラー時は元のクエリを使用して即座にファイル生成
@@ -11861,7 +11861,7 @@ def execute_explain_with_retry_logic(original_query: str, analysis_result: str, 
         # エラー時の処理
         elif 'error_file' in explain_result:
             error_message = explain_result.get('error_message', 'Unknown error')
-            print(f"❌ 試行 {attempt_num} でエラー発生: {error_message}")
+            print(f"❌ Error occurred in attempt {attempt_num}: {error_message}")
             
             # エラー記録
             attempt_record = {
@@ -11919,7 +11919,7 @@ def execute_explain_with_retry_logic(original_query: str, analysis_result: str, 
                     print(f"📄 失敗ログを保存: {log_filename}")
                     
                 except Exception as log_error:
-                    print(f"❌ 失敗ログの保存にも失敗: {str(log_error)}")
+                                            print(f"❌ Failed to save failure log as well: {str(log_error)}")
                 
                 return {
                     'final_status': 'fallback_to_original',
@@ -11951,7 +11951,7 @@ def execute_explain_with_retry_logic(original_query: str, analysis_result: str, 
             
             # LLMエラーチェック（エラー修正時）
             if isinstance(corrected_query, str) and corrected_query.startswith("LLM_ERROR:"):
-                print("❌ エラー修正でもLLMエラーが発生したため、元のクエリを使用します")
+                print("❌ LLM error occurred even in error correction, using original query")
                 print(f"🔧 エラー詳細: {corrected_query[10:]}")  # "LLM_ERROR:"を除去
                 
                 # 失敗記録
