@@ -638,7 +638,7 @@ def extract_performance_metrics(profiler_data: Dict[str, Any]) -> Dict[str, Any]
             "query_text": query.get('queryText', '')[:300] + "..." if len(query.get('queryText', '')) > 300 else query.get('queryText', '')
         }
         
-        # 全体的なメトリクス
+        # Overall metrics
         if 'metrics' in query:
             query_metrics = query['metrics']
             metrics["overall_metrics"] = {
@@ -654,18 +654,18 @@ def extract_performance_metrics(profiler_data: Dict[str, Any]) -> Dict[str, Any]
                 "read_files_count": query_metrics.get('readFilesCount', 0),
                 "task_total_time_ms": query_metrics.get('taskTotalTimeMs', 0),
                 "photon_total_time_ms": query_metrics.get('photonTotalTimeMs', 0),
-                # Photon利用状況の分析（Photon実行時間/タスク合計時間）
+                # Photon usage analysis (Photon execution time / total task time)
                 "photon_enabled": query_metrics.get('photonTotalTimeMs', 0) > 0,
                 "photon_utilization_ratio": min(query_metrics.get('photonTotalTimeMs', 0) / max(query_metrics.get('taskTotalTimeMs', 1), 1), 1.0)
             }
     
-    # グラフデータからステージとノードのメトリクスを抽出（複数グラフ対応）
+    # Extract stage and node metrics from graph data (supports multiple graphs)
     if 'graphs' in profiler_data and profiler_data['graphs']:
-        # すべてのグラフを分析
+        # Analyze all graphs
         for graph_index, graph in enumerate(profiler_data['graphs']):
             print(f"🔍 Analyzing graph {graph_index}...")
             
-            # ステージデータ
+            # Stage data
             if 'stageData' in graph:
                 for stage in graph['stageData']:
                     stage_metric = {
@@ -681,11 +681,11 @@ def extract_performance_metrics(profiler_data: Dict[str, Any]) -> Dict[str, Any]
                     }
                     metrics["stage_metrics"].append(stage_metric)
             
-            # ノードデータ（重要なもののみ）
+            # Node data (important ones only)
             if 'nodes' in graph:
                 for node in graph['nodes']:
                     if not node.get('hidden', False):
-                        # keyMetricsをそのまま使用（durationMsは既にミリ秒単位）
+                        # Use keyMetrics as-is (durationMs is already in milliseconds)
                         key_metrics = node.get('keyMetrics', {})
                         
                         node_metric = {
@@ -698,24 +698,24 @@ def extract_performance_metrics(profiler_data: Dict[str, Any]) -> Dict[str, Any]
                             "graph_index": graph_index  # どのグラフ由来かを記録
                         }
                         
-                        # 重要なメトリクスのみ詳細抽出（スピル関連キーワード追加・label対応）
+                        # Extract only important metrics in detail (added spill-related keywords, label support)
                         detailed_metrics = {}
                         for metric in node.get('metrics', []):
                             metric_key = metric.get('key', '')
                             metric_label = metric.get('label', '')
                             
-                            # キーワードをkeyとlabelの両方で確認
+                            # Check keywords in both key and label
                             key_keywords = ['TIME', 'MEMORY', 'ROWS', 'BYTES', 'DURATION', 'PEAK', 'CUMULATIVE', 'EXCLUSIVE', 
                                            'SPILL', 'DISK', 'PRESSURE', 'SINK']
                             
-                            # metric_keyまたはmetric_labelに重要なキーワードが含まれる場合に抽出
+                            # Extract when metric_key or metric_label contains important keywords
                             is_important_metric = (
                                 any(keyword in metric_key.upper() for keyword in key_keywords) or
                                 any(keyword in metric_label.upper() for keyword in key_keywords)
                             )
                             
                             if is_important_metric:
-                                # メトリクス名として、labelが有効な場合はlabelを使用、そうでなければkeyを使用
+                                                                  # Use label as metric name if valid, otherwise use key
                                 metric_name = metric_label if metric_label and metric_label != 'UNKNOWN_KEY' else metric_key
                                 detailed_metrics[metric_name] = {
                                     'value': metric.get('value', 0),
@@ -730,7 +730,7 @@ def extract_performance_metrics(profiler_data: Dict[str, Any]) -> Dict[str, Any]
     # Calculate bottleneck indicators
     metrics["bottleneck_indicators"] = calculate_bottleneck_indicators(metrics)
     
-    # Liquid Clustering分析
+    # Liquid Clustering analysis
     metrics["liquid_clustering_analysis"] = analyze_liquid_clustering_opportunities(profiler_data, metrics)
     
     return metrics
@@ -759,7 +759,7 @@ def get_meaningful_node_name(node: Dict[str, Any], extracted_metrics: Dict[str, 
     node_id = node.get('node_id', node.get('id', ''))
     node_tag = node.get('tag', '')
     
-    # メタデータから詳細情報を取得
+    # Get detailed information from metadata
     metadata = node.get('metadata', [])
     metadata_info = {}
     for meta in metadata:
@@ -822,7 +822,7 @@ def get_meaningful_node_name(node: Dict[str, Any], extracted_metrics: Dict[str, 
     if node_tag in tag_to_name_mapping:
         mapped_name = tag_to_name_mapping[node_tag]
         if mapped_name != original_name and mapped_name != 'Whole Stage Codegen':
-            # タグの方がより具体的な場合は使用
+            # Use tag if it's more specific
             enhanced_name = mapped_name
         else:
             enhanced_name = original_name
@@ -838,12 +838,12 @@ def get_meaningful_node_name(node: Dict[str, Any], extracted_metrics: Dict[str, 
     for key_candidate in ['SCAN_TABLE', 'SCAN_IDENTIFIER', 'TABLE_NAME', 'RELATION', 'SCAN_RELATION']:
         if key_candidate in metadata_info:
             extracted_table = metadata_info[key_candidate]
-            # フルパス（catalog.schema.table）の場合はそのまま使用
+            # Use as-is for full path (catalog.schema.table)
             if isinstance(extracted_table, str) and extracted_table.count('.') >= 2:
                 table_name = extracted_table
                 break
             elif isinstance(extracted_table, str) and extracted_table.count('.') == 1:
-                # schema.table形式の場合もそのまま使用
+                # Use as-is for schema.table format as well
                 table_name = extracted_table
                 break
             elif not table_name:  # Set only if table name has not been found yet
@@ -854,7 +854,7 @@ def get_meaningful_node_name(node: Dict[str, Any], extracted_metrics: Dict[str, 
         # Infer table name from node name
         import re
         
-        # "Scan tpcds.tpcds_sf1000_delta_lc.customer" のような形式
+        # Format like "Scan tpcds.tpcds_sf1000_delta_lc.customer"
         table_patterns = [
             r'[Ss]can\s+([a-zA-Z_][a-zA-Z0-9_.]*[a-zA-Z0-9_])',
             r'[Tt]able\s+([a-zA-Z_][a-zA-Z0-9_.]*[a-zA-Z0-9_])',
@@ -865,20 +865,20 @@ def get_meaningful_node_name(node: Dict[str, Any], extracted_metrics: Dict[str, 
             match = re.search(pattern, original_name)
             if match:
                 if '.' in match.group(0):
-                    # フルテーブル名（catalog.schema.table）の場合はフルパスを使用
+                    # Use full path for full table name (catalog.schema.table)
                     table_name = match.group(0)
                 else:
                     table_name = match.group(1) if match.lastindex and match.lastindex >= 1 else match.group(0)
                 break
     
-    # メタデータのvaluesフィールドからもテーブル名を検索
+            # Search for table name from metadata values field as well
     if not table_name:
         for meta in metadata:
             values = meta.get('values', [])
             if values:
                 for value in values:
                     if isinstance(value, str) and '.' in value and len(value.split('.')) >= 2:
-                        # "catalog.schema.table" 形式の場合
+                        # For "catalog.schema.table" format
                         parts = value.split('.')
                         if len(parts) >= 2 and not any(part.isdigit() for part in parts[-2:]):
                             # フルパスを使用（catalog.schema.table）
@@ -8745,7 +8745,7 @@ Statistical optimization has been executed (details available with DEBUG_ENABLED
         
         report += "\n"
         
-        # Liquid Clustering分析結果の追加
+        # Add Liquid Clustering analysis results
         if liquid_analysis:
             performance_context = liquid_analysis.get('performance_context', {})
             llm_analysis = liquid_analysis.get('llm_analysis', '')
@@ -8988,7 +8988,7 @@ The following topics are analyzed for process evaluation:
         except Exception as e:
             report += f"⚠️ Error generating TOP10 analysis: {str(e)}\n"
         
-        # Liquid Clustering分析結果の追加（英語版）
+        # Add Liquid Clustering analysis results (English version)
         if liquid_analysis:
             performance_context = liquid_analysis.get('performance_context', {})
             llm_analysis = liquid_analysis.get('llm_analysis', '')
