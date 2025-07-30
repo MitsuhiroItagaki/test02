@@ -93,14 +93,14 @@ def save_debug_query_trial(query: str, attempt_num: int, trial_type: str, query_
     Save queries under optimization attempt by attempt when DEBUG_ENABLED=Y
     
     Args:
-        query: 生成されたクエリ
-        attempt_num: 試行番号 (1, 2, 3, ...)
-        trial_type: 試行タイプ ('initial', 'performance_improvement', 'error_correction')
-        query_id: クエリID (optional)
-        error_info: エラー情報 (optional)
+        query: Generated query
+        attempt_num: Trial number (1, 2, 3, ...)
+        trial_type: Trial type ('initial', 'performance_improvement', 'error_correction')
+        query_id: Query ID (optional)
+        error_info: Error information (optional)
     
     Returns:
-        保存されたファイルパス（保存されなかった場合は空文字）
+        Saved file path (empty string if not saved)
     """
     debug_enabled = globals().get('DEBUG_ENABLED', 'N')
     if debug_enabled.upper() != 'Y':
@@ -110,27 +110,27 @@ def save_debug_query_trial(query: str, attempt_num: int, trial_type: str, query_
         from datetime import datetime
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         
-        # クエリIDが指定されていない場合は試行番号から生成
+        # Generate query ID from trial number if not specified
         if not query_id:
             query_id = f"trial_{attempt_num}"
         
-        # ファイル名生成: debug_trial_{attempt_num}_{trial_type}_{timestamp}.sql
+        # Generate filename: debug_trial_{attempt_num}_{trial_type}_{timestamp}.sql
         filename = f"debug_trial_{attempt_num:02d}_{trial_type}_{timestamp}.sql"
         
-        # メタデータ情報の準備
+        # Prepare metadata information
         metadata_header = f"""-- 🐛 DEBUG: Optimization trial query (DEBUG_ENABLED=Y)
--- 📋 試行番号: {attempt_num}
--- 🎯 試行タイプ: {trial_type}
--- 🕐 生成時刻: {timestamp}
--- 🔍 クエリID: {query_id}
+-- 📋 Trial number: {attempt_num}
+-- 🎯 Trial type: {trial_type}
+-- 🕐 Generated time: {timestamp}
+-- 🔍 Query ID: {query_id}
 """
         
-        # エラー情報がある場合は追加
+        # Add error information if available
         if error_info:
-            metadata_header += f"""-- ⚠️  エラー情報: {error_info[:200]}{'...' if len(error_info) > 200 else ''}
+            metadata_header += f"""-- ⚠️  Error information: {error_info[:200]}{'...' if len(error_info) > 200 else ''}
 """
         
-        metadata_header += f"""-- 📄 生成ファイル: {filename}
+        metadata_header += f"""-- 📄 Generated file: {filename}
 -- ================================================
 
 """
