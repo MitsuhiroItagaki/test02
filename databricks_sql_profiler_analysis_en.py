@@ -219,7 +219,7 @@ def get_message(key: str) -> str:
 # Unity Catalog Volumes:
 # JSON_FILE_PATH = '/Volumes/catalog/schema/volume/profiler.json'
 # 
-# FileStore (推奨):
+# FileStore (recommended):
 # JSON_FILE_PATH = '/FileStore/shared_uploads/your_username/profiler_log.json'
 # 
 # DBFS:
@@ -233,7 +233,7 @@ print("=" * 50)
 print(f"📄 Target file: {JSON_FILE_PATH}")
 print("=" * 50)
 
-# ⚙️ 基本的な環境設定
+# ⚙️ Basic environment configuration
 import json
 try:
     import pandas as pd
@@ -258,44 +258,44 @@ print("🚀 Please proceed to the next cell")
 
 # COMMAND ----------
 
-# 🤖 LLMエンドポイント設定
+# 🤖 LLM Endpoint Configuration
 LLM_CONFIG = {
-    # エンドポイントタイプ: 'databricks', 'openai', 'azure_openai', 'anthropic'
+    # Endpoint type: 'databricks', 'openai', 'azure_openai', 'anthropic'
     "provider": "databricks",
     
-    # Databricks Model Serving設定（高速実行優先）
+    # Databricks Model Serving configuration (high-speed execution priority)
     "databricks": {
-        "endpoint_name": "databricks-claude-3-7-sonnet",  # Model Servingエンドポイント名
-        "max_tokens": 131072,  # 128K tokens（Claude 3.7 Sonnetの最大制限）
-        "temperature": 0.0,    # 決定的な出力のため（0.1→0.0）
-        # "thinking_enabled": False,  # 拡張思考モード（デフォルト: 無効 - 高速実行優先）- Claude 3 Sonnet専用
-        # "thinking_budget_tokens": 65536  # 思考用トークン予算 64K tokens（有効時のみ使用）- Claude 3 Sonnet専用
+        "endpoint_name": "databricks-claude-3-7-sonnet",  # Model Serving endpoint name
+        "max_tokens": 131072,  # 128K tokens (Claude 3.7 Sonnet maximum limit)
+        "temperature": 0.0,    # For deterministic output (0.1→0.0)
+        # "thinking_enabled": False,  # Extended thinking mode (default: disabled - high-speed execution priority) - Claude 3 Sonnet only
+        # "thinking_budget_tokens": 65536  # Thinking token budget 64K tokens (used only when enabled) - Claude 3 Sonnet only
     },
     
-    # OpenAI設定（完全なSQL生成用に最適化）
+    # OpenAI configuration (optimized for complete SQL generation)
     "openai": {
-        "api_key": "",  # OpenAI APIキー (環境変数OPENAI_API_KEYでも可)
+        "api_key": "",  # OpenAI API key (can also use environment variable OPENAI_API_KEY)
         "model": "gpt-4o",  # gpt-4o, gpt-4-turbo, gpt-3.5-turbo
-        "max_tokens": 16000,  # OpenAIの制限内最大
-        "temperature": 0.0    # 決定的な出力のため（0.1→0.0）
+        "max_tokens": 16000,  # Maximum within OpenAI limits
+        "temperature": 0.0    # For deterministic output (0.1→0.0)
     },
     
-    # Azure OpenAI設定（完全なSQL生成用に最適化）
+    # Azure OpenAI configuration (optimized for complete SQL generation)
     "azure_openai": {
-        "api_key": "",  # Azure OpenAI APIキー (環境変数AZURE_OPENAI_API_KEYでも可)
+        "api_key": "",  # Azure OpenAI API key (can also use environment variable AZURE_OPENAI_API_KEY)
         "endpoint": "",  # https://your-resource.openai.azure.com/
-        "deployment_name": "",  # デプロイメント名
+        "deployment_name": "",  # Deployment name
         "api_version": "2024-02-01",
-        "max_tokens": 16000,  # Azure OpenAIの制限内最大
-        "temperature": 0.0    # 決定的な出力のため（0.1→0.0）
+        "max_tokens": 16000,  # Maximum within Azure OpenAI limits
+        "temperature": 0.0    # For deterministic output (0.1→0.0)
     },
     
-    # Anthropic設定（完全なSQL生成用に最適化）
+    # Anthropic configuration (optimized for complete SQL generation)
     "anthropic": {
-        "api_key": "",  # Anthropic APIキー (環境変数ANTHROPIC_API_KEYでも可)
+        "api_key": "",  # Anthropic API key (can also use environment variable ANTHROPIC_API_KEY)
         "model": "claude-3-5-sonnet-20241022",  # claude-3-5-sonnet-20241022, claude-3-opus-20240229
-        "max_tokens": 16000,  # Anthropicの制限内最大
-        "temperature": 0.0    # 決定的な出力のため（0.1→0.0）
+        "max_tokens": 16000,  # Maximum within Anthropic limits
+        "temperature": 0.0    # For deterministic output (0.1→0.0)
     }
 }
 
@@ -4019,14 +4019,14 @@ print("   📊 Importance: Based on detected value")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 🐌 最も時間がかかっている処理TOP10
+# MAGIC ## 🐌 Top 10 Most Time-Consuming Processes
 # MAGIC
-# MAGIC このセルでは以下の処理を実行します：
-# MAGIC - 抽出したメトリクスのJSON形式での保存
-# MAGIC - set型からlist型への変換処理
-# MAGIC - 最も時間がかかっている処理TOP10の詳細分析
-# MAGIC - スピル検出とデータスキュー分析
-# MAGIC - Sparkステージ実行分析
+# MAGIC This cell performs the following processing:
+# MAGIC - Saving extracted metrics in JSON format
+# MAGIC - Converting set types to list types
+# MAGIC - Detailed analysis of the top 10 most time-consuming processes
+# MAGIC - Spill detection and data skew analysis
+# MAGIC - Spark stage execution analysis
 
 # COMMAND ----------
 
@@ -4794,14 +4794,14 @@ print()
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 🗂️ Liquid Clustering分析結果の詳細表示
+# MAGIC ## 🗂️ Detailed Display of Liquid Clustering Analysis Results
 # MAGIC
-# MAGIC このセルでは以下の処理を実行します：
-# MAGIC - テーブル別推奨クラスタリングカラムの詳細表示
-# MAGIC - パフォーマンス向上見込みの分析
-# MAGIC - カラム使用パターンの詳細分析
-# MAGIC - プッシュダウンフィルター情報の表示
-# MAGIC - SQL実装例の提示
+# MAGIC This cell performs the following processing:
+# MAGIC - Detailed display of recommended clustering columns by table
+# MAGIC - Analysis of expected performance improvements
+# MAGIC - Detailed analysis of column usage patterns
+# MAGIC - Display of pushdown filter information
+# MAGIC - Presentation of SQL implementation examples
 
 # COMMAND ----------
 
@@ -4901,12 +4901,12 @@ analysis_result = analyze_bottlenecks_with_llm(extracted_metrics)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 🎯 LLMボトルネック分析結果の表示
+# MAGIC ## 🎯 Display of LLM Bottleneck Analysis Results
 # MAGIC
-# MAGIC このセルでは以下の処理を実行します：
-# MAGIC - 設定されたLLMプロバイダーによる詳細分析結果の表示
-# MAGIC - ボトルネック特定と改善提案の可視化
-# MAGIC - 分析結果の整形と読みやすい表示
+# MAGIC This cell performs the following processing:
+# MAGIC - Display of detailed analysis results by the configured LLM provider
+# MAGIC - Visualization of bottleneck identification and improvement recommendations
+# MAGIC - Formatting and readable display of analysis results
 
 # COMMAND ----------
 
@@ -4922,13 +4922,13 @@ print("=" * 80)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 💾 分析結果の保存と完了サマリー
+# MAGIC ## 💾 Saving Analysis Results and Completion Summary
 # MAGIC
-# MAGIC このセルでは以下の処理を実行します：
-# MAGIC - LLM分析結果のテキストファイルへの保存
-# MAGIC - 分析対象の基本情報の記録
-# MAGIC - 全体処理の完了サマリー表示
-# MAGIC - 出力ファイルの一覧表示
+# MAGIC This cell performs the following processing:
+# MAGIC - Saving LLM analysis results to text files
+# MAGIC - Recording basic information of analysis targets
+# MAGIC - Displaying overall processing completion summary
+# MAGIC - Listing output files
 
 # COMMAND ----------
 
@@ -10137,12 +10137,12 @@ print("✅ 関数定義完了: SQL最適化関連関数（実行プランサイ�
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 🚀 オリジナルクエリ抽出
+# MAGIC ## 🚀 Original Query Extraction
 # MAGIC
-# MAGIC このセルでは以下の処理を実行します：
-# MAGIC - プロファイラーデータからオリジナルクエリの抽出
-# MAGIC - 抽出されたクエリの詳細表示（64KBまで）
-# MAGIC - フォールバック処理（サンプルクエリの設定）
+# MAGIC This cell performs the following processing:
+# MAGIC - Extraction of original query from profiler data
+# MAGIC - Detailed display of extracted query (up to 64KB)
+# MAGIC - Fallback processing (sample query configuration)
 
 # COMMAND ----------
 
@@ -10232,13 +10232,13 @@ except Exception as e:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 🔍 SQL最適化実行
+# MAGIC ## 🔍 SQL Optimization Execution
 # MAGIC
-# MAGIC このセルでは以下の処理を実行します：
-# MAGIC - セル43で抽出したオリジナルクエリを取得
-# MAGIC - EXPLAIN文を生成してDatabricksで実行
-# MAGIC - 実行プランの詳細をファイルに出力
-# MAGIC - エラーハンドリングと結果の確認
+# MAGIC This cell performs the following processing:
+# MAGIC - Retrieve original query extracted in Cell 43
+# MAGIC - Generate and execute EXPLAIN statements in Databricks
+# MAGIC - Output execution plan details to files
+# MAGIC - Error handling and result verification
 
 # COMMAND ----------
 
@@ -12753,12 +12753,12 @@ print()
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 📝 レポート成形処理
+# MAGIC ## 📝 Report Formatting Process
 # MAGIC
-# MAGIC このセルでは以下の処理を実行します：
-# MAGIC - 最適化レポートファイルの検索と読み込み
-# MAGIC - LLMによるレポート内容の推敲・改善
-# MAGIC - 推敲結果の保存と最終レポート生成
+# MAGIC This cell performs the following processing:
+# MAGIC - Search and load optimization report files
+# MAGIC - Refine and improve report content using LLM
+# MAGIC - Save refinement results and generate final report
 
 # COMMAND ----------
 # 
