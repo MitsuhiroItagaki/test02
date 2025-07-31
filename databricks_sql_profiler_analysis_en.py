@@ -12880,54 +12880,106 @@ def refine_report_content_with_llm(report_content: str) -> str:
     photon_evaluation_instruction = ""
     if photon_match:
         photon_utilization = float(photon_match.group(1))
-        if photon_utilization <= 80:
-            photon_evaluation_instruction = """
-# 【Photon利用率評価指示】
-# - Photon利用率が80%以下の場合は「要改善」または「不良」の評価を明確に表示してください
-# - 80%以下の場合は、改善の必要性を強調し、具体的な改善アクションを提示してください
-# - 評価例: 「Photon利用率: XX% (評価: 要改善)」
-# """
+        if OUTPUT_LANGUAGE == 'ja':
+            if photon_utilization <= 80:
+                photon_evaluation_instruction = """
+【Photon利用率評価指示】
+- Photon利用率が80%以下の場合は「要改善」または「不良」の評価を明確に表示してください
+- 80%以下の場合は、改善の必要性を強調し、具体的な改善アクションを提示してください
+- 評価例: 「Photon利用率: XX% (評価: 要改善)」
+"""
+            else:
+                photon_evaluation_instruction = """
+【Photon利用率評価指示】
+- Photon利用率が80%以上の場合は「良好」の評価を表示してください
+- 評価例: 「Photon利用率: XX% (評価: 良好)」
+"""
         else:
-            photon_evaluation_instruction = """
-# 【Photon利用率評価指示】
-# - Photon利用率が80%以上の場合は「良好」の評価を表示してください
-# - 評価例: 「Photon利用率: XX% (評価: 良好)」
-# """
+            if photon_utilization <= 80:
+                photon_evaluation_instruction = """
+【Photon Utilization Rate Evaluation Instructions】
+- If Photon utilization rate is 80% or below, clearly display "Needs Improvement" or "Poor" evaluation
+- For 80% or below, emphasize the need for improvement and provide specific improvement actions
+- Example: "Photon Utilization Rate: XX% (Evaluation: Needs Improvement)"
+"""
+            else:
+                photon_evaluation_instruction = """
+【Photon Utilization Rate Evaluation Instructions】
+- If Photon utilization rate is 80% or above, display "Good" evaluation
+- Example: "Photon Utilization Rate: XX% (Evaluation: Good)"
+"""
     
-    refinement_prompt = f"""You are a technical document editor. Please refine the following Databricks SQL performance analysis report to make it readable and concise.
-# 
-# 【Refinement Requirements】
-# 1. Organize the overall structure and arrange information logically
-# 2. Remove redundant expressions and modify to concise, understandable expressions
-# 3. Structure with appropriate heading levels so important information doesn't get buried
-# 4. Keep technical terms while adding understandable explanations
-# 5. Preserve numerical data and metrics
-# 6. Clearly present practical recommendations
-# 
-# 【🚨 Critical Information That Must NOT Be Deleted or Modified】
-# - **Current clustering key information**: Display "Current clustering key: XX" or "Not configured"
-# - **Filter rate information**: Format "Filter rate: X.X% (read: XX.XXGB, pruned: XX.XXGB)"
-# - **Percentage calculations**: Display "XX% of total" for each process (accurate calculations considering parallel execution)
-# - **Recommended vs current comparison analysis**: Comparison information between recommended clustering keys and current keys
-# - **Specific numerical metrics**: Execution time, data read volume, spill volume, utilization rates, etc.
-# - **SQL implementation examples**: Specific examples of ALTER TABLE syntax, CLUSTER BY statements, hint clauses, etc.
-# - **Table-specific detailed information**: Node information, filter efficiency, and recommendations for each table
-# 
-# {photon_evaluation_instruction}
-# 
-# 【Current Report Content】
-# {report_content}
-# 
-# 【Output Requirements】
-# - Output refined report in markdown format
-# - Maintain technical information while improving readability
-# - Emphasize important points and clarify action plans
-# - Clearly display Photon utilization rate evaluation
-# - **Required**: Completely preserve current clustering key information and filter rate information
-# - **Required**: Use original accurate numerical values for percentage calculations
-# - **Required**: Do not delete detailed analysis information by table (current key, recommended key, filter rate)
-# - **Required**: Preserve SQL implementation examples (ALTER TABLE, CLUSTER BY, etc.) in complete form
-# """
+    # 言語に応じて推敲プロンプトを切り替え
+    if OUTPUT_LANGUAGE == 'ja':
+        refinement_prompt = f"""あなたは技術文書編集者です。以下のDatabricks SQL パフォーマンス分析レポートを読みやすく簡潔に推敲してください。
+
+【推敲要件】
+1. 全体構成を整理し、論理的に情報を配置
+2. 冗長な表現を削除し、簡潔で理解しやすい表現に修正
+3. 重要な情報が埋もれないよう適切な見出しレベルで構造化
+4. 技術用語を保持しつつ、理解しやすい説明を追加
+5. 数値データとメトリクスを保持
+6. 実用的な推奨事項を明確に提示
+
+【🚨 削除・修正してはいけない重要情報】
+- **現在のクラスタリングキー情報**: "現在のクラスタリングキー: XX" または "設定なし" の表示
+- **フィルタ率情報**: "フィルタ率: X.X% (読み込み: XX.XXGB, プルーン: XX.XXGB)" の形式
+- **パーセンテージ計算**: 各プロセスの "全体のXX%" 表示（並列実行を考慮した正確な計算）
+- **推奨vs現在の比較分析**: 推奨クラスタリングキーと現在のキーの比較情報
+- **具体的な数値メトリクス**: 実行時間、データ読み込み量、スピル量、利用率等
+- **SQL実装例**: ALTER TABLE構文、CLUSTER BY文、ヒント句等の具体例
+- **テーブル別詳細情報**: 各テーブルのノード情報、フィルタ効率、推奨事項
+
+{photon_evaluation_instruction}
+
+【現在のレポート内容】
+{report_content}
+
+【出力要件】
+- マークダウン形式で推敲されたレポートを出力
+- 技術情報を保持しつつ可読性を向上
+- 重要ポイントの強調と行動計画の明確化
+- Photon利用率評価の明確な表示
+- **必須**: 現在のクラスタリングキー情報とフィルタ率情報の完全保持
+- **必須**: パーセンテージ計算では元の正確な数値を使用
+- **必須**: テーブル別詳細分析情報（現在キー、推奨キー、フィルタ率）を削除しない
+- **必須**: SQL実装例（ALTER TABLE、CLUSTER BY等）を完全な形で保持
+"""
+    else:
+        refinement_prompt = f"""You are a technical document editor. Please refine the following Databricks SQL performance analysis report to make it readable and concise.
+
+【Refinement Requirements】
+1. Organize the overall structure and arrange information logically
+2. Remove redundant expressions and modify to concise, understandable expressions
+3. Structure with appropriate heading levels so important information doesn't get buried
+4. Keep technical terms while adding understandable explanations
+5. Preserve numerical data and metrics
+6. Clearly present practical recommendations
+
+【🚨 Critical Information That Must NOT Be Deleted or Modified】
+- **Current clustering key information**: Display "Current clustering key: XX" or "Not configured"
+- **Filter rate information**: Format "Filter rate: X.X% (read: XX.XXGB, pruned: XX.XXGB)"
+- **Percentage calculations**: Display "XX% of total" for each process (accurate calculations considering parallel execution)
+- **Recommended vs current comparison analysis**: Comparison information between recommended clustering keys and current keys
+- **Specific numerical metrics**: Execution time, data read volume, spill volume, utilization rates, etc.
+- **SQL implementation examples**: Specific examples of ALTER TABLE syntax, CLUSTER BY statements, hint clauses, etc.
+- **Table-specific detailed information**: Node information, filter efficiency, and recommendations for each table
+
+{photon_evaluation_instruction}
+
+【Current Report Content】
+{report_content}
+
+【Output Requirements】
+- Output refined report in markdown format
+- Maintain technical information while improving readability
+- Emphasize important points and clarify action plans
+- Clearly display Photon utilization rate evaluation
+- **Required**: Completely preserve current clustering key information and filter rate information
+- **Required**: Use original accurate numerical values for percentage calculations
+- **Required**: Do not delete detailed analysis information by table (current key, recommended key, filter rate)
+- **Required**: Preserve SQL implementation examples (ALTER TABLE, CLUSTER BY, etc.) in complete form
+"""
     
     try:
         # 設定されたLLMプロバイダーに基づいて推敲を実行
@@ -12986,16 +13038,16 @@ def save_refined_report(refined_content: str, original_filename: str) -> str:
     """Save refined report"""
     from datetime import datetime
     
-    # 推敲版のファイル名を生成
-    base_name = original_filename.replace('.md', '')
+    # 最終レポートのファイル名を生成（言語別対応）
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    refined_filename = f"{base_name}_refined_{timestamp}.md"
+    language_suffix = 'en' if OUTPUT_LANGUAGE == 'en' else 'jp'
+    refined_filename = f"output_final_report_{language_suffix}_{timestamp}.md"
     
     try:
         with open(refined_filename, 'w', encoding='utf-8') as f:
             f.write(refined_content)
         
-        print(f"✅ 推敲されたレポートを保存: {refined_filename}")
+        print(f"✅ 最終レポートを保存: {refined_filename}")
         return refined_filename
         
     except Exception as e:
