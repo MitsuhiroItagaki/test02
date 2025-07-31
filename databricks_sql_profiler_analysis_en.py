@@ -8501,6 +8501,55 @@ def generate_performance_comparison_section(performance_comparison: Dict[str, An
     
     return section
 
+def translate_analysis_to_japanese(english_text: str) -> str:
+    """
+    LLMを使用して英語の分析結果を日本語に翻訳
+    """
+    try:
+        print("🌐 Translating analysis result to Japanese...")
+        
+        translation_prompt = f"""
+以下の英語のSQL分析結果を、技術的な正確性を保ちながら自然な日本語に翻訳してください。
+専門用語は適切な日本語に翻訳し、数値やメトリクス名はそのまま保持してください。
+
+【翻訳対象】
+{english_text}
+
+【翻訳要件】
+- 技術的正確性を最優先
+- 自然で読みやすい日本語
+- SQL用語は適切な日本語表現を使用
+- 数値・パフォーマンス指標はそのまま保持
+- 推奨事項は実用的な日本語で表現
+
+日本語翻訳結果のみを出力してください：
+"""
+        
+        provider = LLM_CONFIG.get("provider", "databricks")
+        
+        if provider == "databricks":
+            japanese_result = _call_databricks_llm(translation_prompt)
+        elif provider == "openai":
+            japanese_result = _call_openai_llm(translation_prompt)
+        elif provider == "azure_openai":
+            japanese_result = _call_azure_openai_llm(translation_prompt)
+        elif provider == "anthropic":
+            japanese_result = _call_anthropic_llm(translation_prompt)
+        else:
+            print(f"⚠️ Unknown LLM provider: {provider}, skipping translation")
+            return english_text
+        
+        if japanese_result and japanese_result.strip():
+            print("✅ Translation to Japanese completed")
+            return japanese_result.strip()
+        else:
+            print("⚠️ Translation failed, using original English text")
+            return english_text
+            
+    except Exception as e:
+        print(f"⚠️ Translation error: {str(e)}, using original English text")
+        return english_text
+
 def generate_comprehensive_optimization_report(query_id: str, optimized_result: str, metrics: Dict[str, Any], analysis_result: str = "", performance_comparison: Dict[str, Any] = None, best_attempt_number: int = None) -> str:
     """
     包括的な最適化レポートを生成
@@ -8694,6 +8743,10 @@ Statistical optimization has been executed (details available with DEBUG_ENABLED
     import re
     signature_pattern = r"'signature':\s*'[A-Za-z0-9+/=]{100,}'"
     analysis_result_str = re.sub(signature_pattern, "'signature': '[REMOVED]'", analysis_result_str)
+    
+    # 日本語出力の場合、analysis_result_strをLLMで日本語に翻訳
+    if OUTPUT_LANGUAGE == 'ja' and analysis_result_str and analysis_result_str.strip():
+        analysis_result_str = translate_analysis_to_japanese(analysis_result_str)
     
     # レポートの構成
     if OUTPUT_LANGUAGE == 'ja':
