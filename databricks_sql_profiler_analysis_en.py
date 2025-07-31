@@ -9208,32 +9208,34 @@ def refine_report_with_llm(raw_report: str, query_id: str) -> str:
     else:
         print(f"📊 レポートサイズ: {original_size:,} 文字（推敲実行）")
     
-    refinement_prompt = f"""
+    # 言語に応じてプロンプトを切り替え
+    if OUTPUT_LANGUAGE == 'ja':
+        refinement_prompt = f"""
 技術文書の編集者として、Databricks SQLパフォーマンス分析レポートを以下のルールに従って推敲してください。
 
 【絶対に守るべき見出し構造】
 ```
-# Databricks SQLパフォーマンス分析レポート
+# 📊 SQL最適化レポート
 
-## 1. ボトルネック分析結果
+## 🎯 1. ボトルネック分析結果
 
-### AIによる詳細分析
+### 🤖 AIによる詳細分析
 
 #### (1) 主要ボトルネックと原因
 #### (2) パフォーマンス指標の評価
 #### (3) 推奨改善アクション
 
-## 2. TOP10時間消費プロセス分析
+## 📊 2. TOP10時間消費プロセス分析
 
-### 実行時間ランキング
+### ⏱️ 実行時間ランキング
 
-## 3. Liquid Clustering分析結果
+## 🗂️ 3. Liquid Clustering分析結果
 
-### 推奨テーブル分析
+### 📋 推奨テーブル分析
 
-## 4. 最適化されたSQLクエリ
+## 🚀 4. 最適化されたSQLクエリ
 
-### 改善提案
+### 💡 改善提案
 ```
 
 【厳格な禁止事項】
@@ -9264,6 +9266,64 @@ def refine_report_with_llm(raw_report: str, query_id: str) -> str:
 ```
 
 上記の見出し構造に従って推敲し、技術情報を完全に保持したレポートを出力してください。
+"""
+    else:
+        refinement_prompt = f"""
+As a technical document editor, please refine the following Databricks SQL performance analysis report according to these rules.
+
+【Required Heading Structure】
+```
+# 📊 SQL Optimization Report
+
+## 🎯 1. Bottleneck Analysis Results
+
+### 🤖 AI-Powered Detailed Analysis
+
+#### (1) Major Bottlenecks and Root Causes
+#### (2) Performance Metrics Evaluation
+#### (3) Recommended Improvement Actions
+
+## 📊 2. TOP10 Time-Consuming Processes Analysis
+
+### ⏱️ Execution Time Ranking
+
+## 🗂️ 3. Liquid Clustering Analysis Results
+
+### 📋 Recommended Table Analysis
+
+## 🚀 4. Optimized SQL Query
+
+### 💡 Improvement Proposals
+```
+
+【Strict Prohibitions】
+- Never change TOP10 to TOP5
+- Remove separator characters like "==========" (but keep emoji visual displays)
+- Do not duplicate numbered list items
+- Do not delete metric values or technical information
+
+【🚨 Critical Information Preservation Requirements】
+- **Current clustering key information**: Must preserve each table's "Current clustering key: XX" information
+- **Filter rate information**: Must preserve "Filter rate: X.X% (read: XX.XXGB, pruned: XX.XXGB)" format
+- **Percentage calculations**: Preserve accurate percentage values in bottleneck analysis (XX% of total)
+- **Recommended vs current comparison**: Do not delete comparison information between recommended and current clustering keys
+- **Numerical metrics**: Do not delete execution time, data read volume, spill volume, etc.
+- **SQL implementation examples**: Do not delete specific examples of ALTER TABLE and CLUSTER BY syntax
+
+【Processing Requirements】
+1. Must use the above heading structure
+2. Completely preserve technical information and metrics (especially the important information above)
+3. Maintain TOP10 display
+4. Keep emoji visual displays (🚨 CRITICAL, ⚠️ HIGH, ✅ Good, etc.)
+5. Remove only unnecessary separator characters (======== etc.)
+6. Absolutely preserve current clustering key information and filter rate information
+
+【Current Report】
+```
+{raw_report}
+```
+
+Please refine according to the above heading structure and output a report that completely preserves technical information.
 """
     
     try:
