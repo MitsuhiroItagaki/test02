@@ -13078,11 +13078,10 @@ def finalize_report_files(original_filename: str, refined_filename: str) -> str:
                 os.remove(original_filename)
                 print(f"🗑️ 元のファイルを削除: {original_filename}")
         
-        # 推敲版ファイルを元のファイル名にリネーム
+        # 最終レポートファイル（output_final_report_*）はリネームせずそのまま保持
         if os.path.exists(refined_filename):
-            os.rename(refined_filename, original_filename)
-            print(f"📝 推敲版ファイルをリネーム: {refined_filename} → {original_filename}")
-            return original_filename
+            print(f"✅ 最終レポートファイルを保持: {refined_filename}")
+            return refined_filename
         else:
             print(f"❌ 推敲版ファイルが見つかりません: {refined_filename}")
             return None
